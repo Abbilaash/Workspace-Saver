@@ -85,6 +85,8 @@ export async function processSyncQueue(): Promise<void> {
         success = await sendSnapshotToBackend(item.payload, settings.apiUrl, settings.userId || 'default_user');
       } else if (item.type === 'note') {
         success = await sendNoteToBackend(item.payload, settings.apiUrl, settings.userId || 'default_user');
+      } else if (item.type === 'delete_project') {
+        success = await sendProjectDeletionToBackend(item.payload.projectId, settings.apiUrl);
       }
 
       if (success) {
@@ -93,6 +95,17 @@ export async function processSyncQueue(): Promise<void> {
     } catch (err) {
       console.warn('Queue item sync paused:', err);
     }
+  }
+}
+
+async function sendProjectDeletionToBackend(projectId: string, apiUrl: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${apiUrl}/projects/${projectId}`, {
+      method: 'DELETE'
+    });
+    return res.ok;
+  } catch {
+    return false;
   }
 }
 
@@ -183,6 +196,15 @@ export function syncNoteToCloud(note: ProjectNote): void {
     const ok = await sendNoteToBackend(note, settings.apiUrl, userId);
     if (!ok) {
       await addToSyncQueue({ type: 'note', payload: note });
+    }
+  }).catch(() => {});
+}
+
+export function syncProjectDeletionToCloud(projectId: string): void {
+  getSettings().then(async (settings) => {
+    const ok = await sendProjectDeletionToBackend(projectId, settings.apiUrl);
+    if (!ok) {
+      await addToSyncQueue({ type: 'delete_project', payload: { projectId } });
     }
   }).catch(() => {});
 }

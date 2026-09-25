@@ -3,7 +3,7 @@ import { Project, WorkspaceSnapshot, ProjectNote, Settings } from '../types';
 
 export interface SyncQueueItem {
   id: string;
-  type: 'project' | 'snapshot' | 'note';
+  type: 'project' | 'snapshot' | 'note' | 'delete_project';
   payload: any;
   createdAt: string;
 }

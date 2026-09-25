@@ -12,7 +12,7 @@ import {
   saveSettings
 } from '../lib/db';
 import { captureWorkspace, restoreWorkspace, getCurrentWorkspaceSummary } from '../services/tabManager';
-import { syncProjectToCloud, syncSnapshotToCloud, syncNoteToCloud, processSyncQueue } from '../lib/sync';
+import { syncProjectToCloud, syncSnapshotToCloud, syncNoteToCloud, syncProjectDeletionToCloud, processSyncQueue } from '../lib/sync';
 
 interface WorkspaceStore {
   projects: Project[];
@@ -235,6 +235,8 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     const proj = projects.find(p => p.id === projectId);
     
     await deleteProjectFromDB(projectId);
+    syncProjectDeletionToCloud(projectId);
+
     const updatedProjects = await getAllProjects();
 
     set({ 

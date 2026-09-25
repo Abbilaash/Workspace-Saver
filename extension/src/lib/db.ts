@@ -127,25 +127,10 @@ export async function getSettings(): Promise<Settings> {
   const settings = await db.get('settings', 'config');
   if (!settings) {
     const initial: Settings = {
-      apiUrl: 'https://workspace-saver.onrender.com',
-      autoSync: true,
-      theme: 'dark',
-      userId: crypto.randomUUID()
+      theme: 'dark'
     };
     await db.put('settings', initial, 'config');
     return initial;
-  }
-  let needsSave = false;
-  if (!settings.userId) {
-    settings.userId = crypto.randomUUID();
-    needsSave = true;
-  }
-  if (!settings.apiUrl || settings.apiUrl === 'http://localhost:8000') {
-    settings.apiUrl = 'https://workspace-saver.onrender.com';
-    needsSave = true;
-  }
-  if (needsSave) {
-    await db.put('settings', settings, 'config');
   }
   return settings;
 }

@@ -12,7 +12,6 @@ import {
   saveSettings
 } from '../lib/db';
 import { captureWorkspace, restoreWorkspace, getCurrentWorkspaceSummary } from '../services/tabManager';
-import { syncProjectToCloud, syncSnapshotToCloud, syncNoteToCloud, enableCloudSync, disableCloudSync } from '../lib/sync';
 
 interface WorkspaceStore {
   projects: Project[];
@@ -44,7 +43,6 @@ interface WorkspaceStore {
   setCommandPaletteOpen: (isOpen: boolean) => void;
   setCreateModalOpen: (isOpen: boolean) => void;
   setSettingsOpen: (isOpen: boolean) => void;
-  toggleCloudSync: (enabled: boolean) => Promise<void>;
   updateSettings: (newSettings: Partial<Settings>) => Promise<void>;
   setToast: (toast: { type: 'success' | 'error' | 'info'; text: string } | null) => void;
 }
@@ -62,8 +60,6 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   isCreateModalOpen: false,
   isSettingsOpen: false,
   settings: {
-    apiUrl: 'http://localhost:8000',
-    autoSync: false,
     theme: 'dark'
   },
   toastMessage: null,
@@ -126,7 +122,6 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     };
 
     await saveProject(newProj);
-    await syncProjectToCloud(newProj);
 
     // Automatically capture current workspace for the new project
     const captured = await captureWorkspace();
@@ -141,7 +136,6 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     };
 
     await saveSnapshot(snapshot);
-    await syncSnapshotToCloud(snapshot);
 
     newProj.tabsCount = captured.tabsCount;
     newProj.groupsCount = captured.groupsCount;
@@ -182,14 +176,12 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       };
 
       await saveSnapshot(snapshot);
-      await syncSnapshotToCloud(snapshot);
 
       proj.updatedAt = new Date().toISOString();
       proj.tabsCount = captured.tabsCount;
       proj.groupsCount = captured.groupsCount;
       proj.lastSnapshotTime = snapshot.createdAt;
       await saveProject(proj);
-      await syncProjectToCloud(proj);
 
       const updatedProjects = await getAllProjects();
       set({ 
@@ -254,7 +246,6 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     proj.name = newName;
     proj.updatedAt = new Date().toISOString();
     await saveProject(proj);
-    await syncProjectToCloud(proj);
 
     const updatedProjects = await getAllProjects();
     set({ projects: updatedProjects });
@@ -273,7 +264,6 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     };
 
     await saveNote(note);
-    await syncNoteToCloud(note);
 
     if (get().selectedProject?.id === projectId) {
       set({ selectedNote: note });
@@ -317,13 +307,11 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     snapshot.createdAt = new Date().toISOString();
 
     await saveSnapshot(snapshot);
-    await syncSnapshotToCloud(snapshot);
 
     proj.tabsCount = snapshot.tabsCount;
     proj.updatedAt = new Date().toISOString();
     proj.lastSnapshotTime = snapshot.createdAt;
     await saveProject(proj);
-    await syncProjectToCloud(proj);
 
     const updatedProjects = await getAllProjects();
     set({
@@ -353,13 +341,11 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     snapshot.createdAt = new Date().toISOString();
 
     await saveSnapshot(snapshot);
-    await syncSnapshotToCloud(snapshot);
 
     proj.tabsCount = snapshot.tabsCount;
     proj.updatedAt = new Date().toISOString();
     proj.lastSnapshotTime = snapshot.createdAt;
     await saveProject(proj);
-    await syncProjectToCloud(proj);
 
     const updatedProjects = await getAllProjects();
     set({
@@ -375,22 +361,6 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   setCommandPaletteOpen: (isOpen: boolean) => set({ isCommandPaletteOpen: isOpen }),
   setCreateModalOpen: (isOpen: boolean) => set({ isCreateModalOpen: isOpen }),
   setSettingsOpen: (isOpen: boolean) => set({ isSettingsOpen: isOpen }),
-
-  toggleCloudSync: async (enabled: boolean) => {
-    if (enabled) {
-      get().setToast({ type: 'info', text: 'Enabling cloud sync & saving data to database...' });
-      const result = await enableCloudSync();
-      const settings = await getSettings();
-      set({ settings });
-      get().setToast({ type: result.success ? 'success' : 'error', text: result.message });
-    } else {
-      get().setToast({ type: 'info', text: 'Disabling cloud sync & erasing database records...' });
-      const result = await disableCloudSync();
-      const settings = await getSettings();
-      set({ settings });
-      get().setToast({ type: 'info', text: result.message });
-    }
-  },
 
   updateSettings: async (newSettings: Partial<Settings>) => {
     const current = get().settings;

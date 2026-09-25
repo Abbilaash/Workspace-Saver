@@ -1,14 +1,14 @@
 import React from 'react';
-import { X, Settings as SettingsIcon, Cloud, CloudOff } from 'lucide-react';
+import { X, Settings as SettingsIcon, Sun, Moon, Database } from 'lucide-react';
 import { useWorkspaceStore } from '../stores/useWorkspaceStore';
 
 export const SettingsModal: React.FC = () => {
-  const { isSettingsOpen, setSettingsOpen, settings, toggleCloudSync } = useWorkspaceStore();
+  const { isSettingsOpen, setSettingsOpen, settings, updateSettings, projects } = useWorkspaceStore();
 
   if (!isSettingsOpen) return null;
 
-  const handleToggle = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    await toggleCloudSync(e.target.checked);
+  const toggleTheme = () => {
+    updateSettings({ theme: settings.theme === 'dark' ? 'light' : 'dark' });
   };
 
   return (
@@ -17,7 +17,7 @@ export const SettingsModal: React.FC = () => {
         <div className="flex items-center justify-between p-3.5 border-b border-border bg-muted/30">
           <div className="flex items-center gap-2">
             <SettingsIcon className="w-4 h-4 text-purple-400" />
-            <h3 className="text-sm font-semibold text-foreground">Settings</h3>
+            <h3 className="text-sm font-semibold text-foreground">Extension Settings</h3>
           </div>
           <button
             onClick={() => setSettingsOpen(false)}
@@ -28,35 +28,40 @@ export const SettingsModal: React.FC = () => {
         </div>
 
         <div className="p-5 space-y-4">
+          {/* Theme Setting */}
           <div className="flex items-center justify-between p-3 bg-muted/50 border border-border rounded-xl">
             <div className="flex items-center gap-2.5">
-              {settings.autoSync ? (
-                <Cloud className="w-5 h-5 text-emerald-400 shrink-0" />
+              {settings.theme === 'dark' ? (
+                <Moon className="w-4 h-4 text-purple-400 shrink-0" />
               ) : (
-                <CloudOff className="w-5 h-5 text-muted-foreground shrink-0" />
+                <Sun className="w-4 h-4 text-amber-400 shrink-0" />
               )}
               <div>
-                <span className="block text-xs font-semibold text-foreground">Cloud Sync</span>
-                <span className="block text-[11px] text-muted-foreground">
-                  {settings.autoSync ? 'Saved to database & website' : 'Local-only storage'}
+                <span className="block text-xs font-semibold text-foreground">Appearance</span>
+                <span className="block text-[11px] text-muted-foreground capitalize">
+                  {settings.theme} Mode
                 </span>
               </div>
             </div>
 
-            <label className="relative inline-flex items-center cursor-pointer">
-              <input
-                type="checkbox"
-                checked={settings.autoSync}
-                onChange={handleToggle}
-                className="sr-only peer"
-              />
-              <div className="w-9 h-5 bg-muted-foreground/30 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-purple-600"></div>
-            </label>
+            <button
+              onClick={toggleTheme}
+              className="px-2.5 py-1 text-xs font-medium border border-border rounded-lg hover:bg-muted transition-colors text-foreground"
+            >
+              Toggle
+            </button>
           </div>
 
-          <p className="text-[11px] text-muted-foreground leading-relaxed px-1">
-            When toggled <strong>ON</strong>, all saved workspaces and notes are saved to the database and visible on the website. When toggled <strong>OFF</strong>, all database data is erased.
-          </p>
+          {/* Local Storage Info */}
+          <div className="p-3 bg-muted/30 border border-border rounded-xl space-y-1">
+            <div className="flex items-center gap-2 text-xs font-medium text-foreground">
+              <Database className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Local IndexedDB Storage</span>
+            </div>
+            <p className="text-[11px] text-muted-foreground leading-relaxed">
+              All {projects.length} project workspaces and notes are saved 100% offline & private on your device.
+            </p>
+          </div>
 
           <div className="pt-2 border-t border-border flex justify-end">
             <button

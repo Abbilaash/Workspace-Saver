@@ -57,13 +57,7 @@ export interface ProjectNote {
 }
 
 export interface Settings {
-  apiUrl: string;
-  autoSync: boolean;
   theme: 'dark' | 'light';
-  userId?: string;
-  userName?: string;
-  userEmail?: string;
-  isSetupComplete?: boolean;
 }
 
 export interface CurrentWorkspaceSummary {

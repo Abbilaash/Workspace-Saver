@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Command, Search, Folder, Play, Plus, Trash2, Settings, Save, X } from 'lucide-react';
+import { Search, Folder, Play, Plus, Save, X } from 'lucide-react';
 import { useWorkspaceStore } from '../stores/useWorkspaceStore';
 
 export const CommandPalette: React.FC = () => {
@@ -11,7 +11,6 @@ export const CommandPalette: React.FC = () => {
     restoreProjectWorkspace,
     saveCurrentWorkspace,
     setCreateModalOpen,
-    setSettingsOpen,
     deleteProject
   } = useWorkspaceStore();
 
@@ -85,17 +84,6 @@ export const CommandPalette: React.FC = () => {
             >
               <Save className="w-3.5 h-3.5 text-emerald-400" />
               <span>Save Current Workspace</span>
-            </button>
-
-            <button
-              onClick={() => {
-                setCommandPaletteOpen(false);
-                setSettingsOpen(true);
-              }}
-              className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs text-foreground hover:bg-accent transition-colors text-left"
-            >
-              <Settings className="w-3.5 h-3.5 text-blue-400" />
-              <span>Open Settings</span>
             </button>
           </div>
 

@@ -1,15 +1,30 @@
-import { Project, WorkspaceSnapshot, ProjectNote, Settings } from '../types';
-import { getSettings, getAllProjects, saveProject, getLatestSnapshotForProject, saveSnapshot, getNoteForProject, saveNote, saveSettings } from './db';
+import { Project, WorkspaceSnapshot, ProjectNote } from '../types';
+import { 
+  getSettings, 
+  getAllProjects, 
+  getLatestSnapshotForProject, 
+  getNoteForProject, 
+  addToSyncQueue, 
+  getSyncQueue, 
+  removeFromSyncQueue 
+} from './db';
 
 export async function checkBackendHealth(apiUrl: string): Promise<boolean> {
   try {
-    const res = await fetch(`${apiUrl}/health`, { method: 'GET', headers: { 'Accept': 'application/json' } });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3000);
+    const res = await fetch(`${apiUrl}/health`, { 
+      method: 'GET', 
+      headers: { 'Accept': 'application/json' },
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
     if (res.ok) {
       const data = await res.json();
       return data.status === 'ok';
     }
   } catch (err) {
-    console.warn('Backend health check failed:', err);
+    // Silent catch for offline status
   }
   return false;
 }
@@ -43,7 +58,6 @@ export async function syncUserToCloud(name: string, email: string): Promise<{ su
     console.warn('Could not sync user to backend:', err);
   }
 
-  // Save locally even if server is offline
   settings.userId = userId;
   settings.userName = name.trim();
   settings.userEmail = email.trim();
@@ -52,12 +66,39 @@ export async function syncUserToCloud(name: string, email: string): Promise<{ su
   return { success: true, userId };
 }
 
-export async function syncProjectToCloud(project: Project): Promise<boolean> {
+export async function processSyncQueue(): Promise<void> {
   const settings = await getSettings();
-  if (!settings.autoSync || !settings.apiUrl) return false;
+  if (!settings.apiUrl) return;
 
+  const queue = await getSyncQueue();
+  if (queue.length === 0) return;
+
+  const isHealthy = await checkBackendHealth(settings.apiUrl);
+  if (!isHealthy) return;
+
+  for (const item of queue) {
+    try {
+      let success = false;
+      if (item.type === 'project') {
+        success = await sendProjectToBackend(item.payload, settings.apiUrl, settings.userId || 'default_user');
+      } else if (item.type === 'snapshot') {
+        success = await sendSnapshotToBackend(item.payload, settings.apiUrl, settings.userId || 'default_user');
+      } else if (item.type === 'note') {
+        success = await sendNoteToBackend(item.payload, settings.apiUrl, settings.userId || 'default_user');
+      }
+
+      if (success) {
+        await removeFromSyncQueue(item.id);
+      }
+    } catch (err) {
+      console.warn('Queue item sync paused:', err);
+    }
+  }
+}
+
+async function sendProjectToBackend(project: Project, apiUrl: string, userId: string): Promise<boolean> {
   try {
-    const res = await fetch(`${settings.apiUrl}/projects`, {
+    const res = await fetch(`${apiUrl}/projects`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -65,30 +106,26 @@ export async function syncProjectToCloud(project: Project): Promise<boolean> {
         name: project.name,
         description: project.description || '',
         color: project.color,
-        user_id: settings.userId || 'default_user',
+        user_id: userId,
         created_at: project.createdAt,
         updated_at: project.updatedAt
       })
     });
     return res.ok;
-  } catch (err) {
-    console.warn(`Failed to sync project ${project.id} to cloud:`, err);
+  } catch {
     return false;
   }
 }
 
-export async function syncSnapshotToCloud(snapshot: WorkspaceSnapshot): Promise<boolean> {
-  const settings = await getSettings();
-  if (!settings.autoSync || !settings.apiUrl) return false;
-
+async function sendSnapshotToBackend(snapshot: WorkspaceSnapshot, apiUrl: string, userId: string): Promise<boolean> {
   try {
-    const res = await fetch(`${settings.apiUrl}/projects/${snapshot.projectId}/snapshots`, {
+    const res = await fetch(`${apiUrl}/projects/${snapshot.projectId}/snapshots`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         id: snapshot.id,
         project_id: snapshot.projectId,
-        user_id: settings.userId || 'default_user',
+        user_id: userId,
         created_at: snapshot.createdAt,
         windows: snapshot.windows,
         tab_groups: snapshot.tabGroups || [],
@@ -97,32 +134,57 @@ export async function syncSnapshotToCloud(snapshot: WorkspaceSnapshot): Promise<
       })
     });
     return res.ok;
-  } catch (err) {
-    console.warn(`Failed to sync snapshot ${snapshot.id} to cloud:`, err);
+  } catch {
     return false;
   }
 }
 
-export async function syncNoteToCloud(note: ProjectNote): Promise<boolean> {
-  const settings = await getSettings();
-  if (!settings.autoSync || !settings.apiUrl) return false;
-
+async function sendNoteToBackend(note: ProjectNote, apiUrl: string, userId: string): Promise<boolean> {
   try {
-    const res = await fetch(`${settings.apiUrl}/projects/${note.projectId}/notes`, {
+    const res = await fetch(`${apiUrl}/projects/${note.projectId}/notes`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         project_id: note.projectId,
-        user_id: settings.userId || 'default_user',
+        user_id: userId,
         content: note.content,
         updated_at: note.updatedAt
       })
     });
     return res.ok;
-  } catch (err) {
-    console.warn(`Failed to sync note for project ${note.projectId} to cloud:`, err);
+  } catch {
     return false;
   }
+}
+
+export function syncProjectToCloud(project: Project): void {
+  getSettings().then(async (settings) => {
+    const userId = settings.userId || 'default_user';
+    const ok = await sendProjectToBackend(project, settings.apiUrl, userId);
+    if (!ok) {
+      await addToSyncQueue({ type: 'project', payload: project });
+    }
+  }).catch(() => {});
+}
+
+export function syncSnapshotToCloud(snapshot: WorkspaceSnapshot): void {
+  getSettings().then(async (settings) => {
+    const userId = settings.userId || 'default_user';
+    const ok = await sendSnapshotToBackend(snapshot, settings.apiUrl, userId);
+    if (!ok) {
+      await addToSyncQueue({ type: 'snapshot', payload: snapshot });
+    }
+  }).catch(() => {});
+}
+
+export function syncNoteToCloud(note: ProjectNote): void {
+  getSettings().then(async (settings) => {
+    const userId = settings.userId || 'default_user';
+    const ok = await sendNoteToBackend(note, settings.apiUrl, userId);
+    if (!ok) {
+      await addToSyncQueue({ type: 'note', payload: note });
+    }
+  }).catch(() => {});
 }
 
 export async function performFullSync(): Promise<{ success: boolean; message: string }> {
@@ -133,46 +195,28 @@ export async function performFullSync(): Promise<{ success: boolean; message: st
 
   const isHealthy = await checkBackendHealth(settings.apiUrl);
   if (!isHealthy) {
-    return { success: false, message: 'Cannot connect to database sync service' };
+    return { success: false, message: 'Backend service offline. Queued for auto-sync.' };
   }
 
   try {
     const localProjects = await getAllProjects();
     for (const proj of localProjects) {
-      await syncProjectToCloud(proj);
+      syncProjectToCloud(proj);
       const snapshot = await getLatestSnapshotForProject(proj.id);
-      if (snapshot) await syncSnapshotToCloud(snapshot);
+      if (snapshot) syncSnapshotToCloud(snapshot);
       const note = await getNoteForProject(proj.id);
-      if (note) await syncNoteToCloud(note);
+      if (note) syncNoteToCloud(note);
     }
+    await processSyncQueue();
     return { success: true, message: 'Sync completed successfully' };
   } catch (err: any) {
     return { success: false, message: err.message || 'Sync failed' };
   }
 }
 
-export async function enableCloudSync(): Promise<{ success: boolean; message: string }> {
-  const settings = await getSettings();
-  settings.autoSync = true;
-  await saveSettings(settings);
-
-  const syncRes = await performFullSync();
-  if (syncRes.success) {
-    return { success: true, message: 'Cloud sync enabled. All local projects saved to database.' };
-  } else {
-    return { success: false, message: `Cloud sync enabled, but database connection failed: ${syncRes.message}` };
-  }
-}
-
-export async function disableCloudSync(): Promise<{ success: boolean; message: string }> {
-  const settings = await getSettings();
-  settings.autoSync = false;
-  await saveSettings(settings);
-
-  try {
-    await fetch(`${settings.apiUrl}/projects/clear-cloud`, { method: 'DELETE' });
-    return { success: true, message: 'Cloud sync disabled. All database records erased.' };
-  } catch (err: any) {
-    return { success: true, message: 'Cloud sync disabled locally.' };
-  }
+// Auto register network listeners for processing offline queue
+if (typeof window !== 'undefined') {
+  window.addEventListener('online', () => {
+    processSyncQueue();
+  });
 }

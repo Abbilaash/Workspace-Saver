@@ -1,6 +1,13 @@
 import { openDB, DBSchema, IDBPDatabase } from 'idb';
 import { Project, WorkspaceSnapshot, ProjectNote, Settings } from '../types';
 
+export interface SyncQueueItem {
+  id: string;
+  type: 'project' | 'snapshot' | 'note';
+  payload: any;
+  createdAt: string;
+}
+
 interface WorkspaceSaverDB extends DBSchema {
   projects: {
     key: string;
@@ -20,17 +27,21 @@ interface WorkspaceSaverDB extends DBSchema {
     key: string;
     value: Settings;
   };
+  syncQueue: {
+    key: string;
+    value: SyncQueueItem;
+  };
 }
 
 const DB_NAME = 'workspace-saver-db';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 let dbPromise: Promise<IDBPDatabase<WorkspaceSaverDB>> | null = null;
 
 export function getDB() {
   if (!dbPromise) {
     dbPromise = openDB<WorkspaceSaverDB>(DB_NAME, DB_VERSION, {
-      upgrade(db) {
+      upgrade(db, oldVersion) {
         // Projects store
         if (!db.objectStoreNames.contains('projects')) {
           const projectStore = db.createObjectStore('projects', { keyPath: 'id' });
@@ -52,6 +63,11 @@ export function getDB() {
         // Settings store
         if (!db.objectStoreNames.contains('settings')) {
           db.createObjectStore('settings');
+        }
+
+        // Sync queue store
+        if (!db.objectStoreNames.contains('syncQueue')) {
+          db.createObjectStore('syncQueue', { keyPath: 'id' });
         }
       },
     });
@@ -119,6 +135,27 @@ export async function getNoteForProject(projectId: string): Promise<ProjectNote 
 export async function saveNote(note: ProjectNote): Promise<void> {
   const db = await getDB();
   await db.put('notes', note);
+}
+
+// Sync Queue operations
+export async function addToSyncQueue(item: Omit<SyncQueueItem, 'id' | 'createdAt'>): Promise<void> {
+  const db = await getDB();
+  const queueItem: SyncQueueItem = {
+    ...item,
+    id: crypto.randomUUID(),
+    createdAt: new Date().toISOString()
+  };
+  await db.put('syncQueue', queueItem);
+}
+
+export async function getSyncQueue(): Promise<SyncQueueItem[]> {
+  const db = await getDB();
+  return db.getAll('syncQueue');
+}
+
+export async function removeFromSyncQueue(id: string): Promise<void> {
+  const db = await getDB();
+  await db.delete('syncQueue', id);
 }
 
 // Settings operations

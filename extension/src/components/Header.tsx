@@ -1,11 +1,10 @@
 import React from 'react';
-import { LayoutGrid, Command, Settings, ExternalLink, Sun, Moon } from 'lucide-react';
+import { LayoutGrid, Command, ExternalLink, Sun, Moon } from 'lucide-react';
 import { useWorkspaceStore } from '../stores/useWorkspaceStore';
 
 export const Header: React.FC = () => {
   const { 
     setCommandPaletteOpen, 
-    setSettingsOpen, 
     settings, 
     updateSettings,
     selectProject
@@ -64,14 +63,6 @@ export const Header: React.FC = () => {
           title="Toggle Theme"
         >
           {settings.theme === 'dark' ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5" />}
-        </button>
-
-        <button
-          onClick={() => setSettingsOpen(true)}
-          className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-          title="Settings"
-        >
-          <Settings className="w-3.5 h-3.5" />
         </button>
       </div>
     </header>

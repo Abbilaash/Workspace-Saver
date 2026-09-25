@@ -5,7 +5,6 @@ import { ProjectList } from '../../components/ProjectList';
 import { ProjectDetail } from '../../components/ProjectDetail';
 import { CreateProjectModal } from '../../components/CreateProjectModal';
 import { CommandPalette } from '../../components/CommandPalette';
-import { SettingsModal } from '../../components/SettingsModal';
 import { OnboardingModal } from '../../components/OnboardingModal';
 import { Toast } from '../../components/Toast';
 import { useWorkspaceStore } from '../../stores/useWorkspaceStore';
@@ -30,7 +29,6 @@ export const App: React.FC = () => {
       <OnboardingModal />
       <CreateProjectModal />
       <CommandPalette />
-      <SettingsModal />
       <Toast />
     </div>
   );

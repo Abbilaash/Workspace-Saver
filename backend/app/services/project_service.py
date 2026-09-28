@@ -13,7 +13,7 @@ class ProjectService:
         
         query = {}
         if user_id and user_id != "all":
-            query = {"user_id": user_id}
+            query = {"$or": [{"user_id": user_id}, {"user_id": "default_user"}, {"user_id": ""}, {"user_id": {"$exists": False}}]}
 
         cursor = db.projects.find(query).sort("updated_at", -1)
         projects = []
@@ -124,7 +124,21 @@ class ProjectService:
         if db is None or not user_id:
             return {"projects": [], "snapshots": [], "notes": []}
         
-        query = {"user_id": user_id}
+        # Include requested user_id AND default_user / unassigned legacy projects
+        query = {
+            "$or": [
+                {"user_id": user_id},
+                {"user_id": "default_user"},
+                {"user_id": ""},
+                {"user_id": {"$exists": False}}
+            ]
+        }
+
+        # Auto-claim any unassigned/default_user projects to this user_id in MongoDB
+        await db.projects.update_many({"$or": [{"user_id": "default_user"}, {"user_id": ""}, {"user_id": {"$exists": False}}]}, {"$set": {"user_id": user_id}})
+        await db.snapshots.update_many({"$or": [{"user_id": "default_user"}, {"user_id": ""}, {"user_id": {"$exists": False}}]}, {"$set": {"user_id": user_id}})
+        await db.notes.update_many({"$or": [{"user_id": "default_user"}, {"user_id": ""}, {"user_id": {"$exists": False}}]}, {"$set": {"user_id": user_id}})
+
         projects_cursor = db.projects.find(query)
         snapshots_cursor = db.snapshots.find(query)
         notes_cursor = db.notes.find(query)
@@ -138,7 +152,7 @@ class ProjectService:
                     "name": doc.get("name", "Untitled Project"),
                     "description": doc.get("description", ""),
                     "color": doc.get("color", "purple"),
-                    "user_id": doc.get("user_id", user_id),
+                    "user_id": user_id,
                     "created_at": doc.get("created_at", datetime.utcnow().isoformat()),
                     "updated_at": doc.get("updated_at", datetime.utcnow().isoformat()),
                     "tabs_count": doc.get("tabs_count", 0),
@@ -151,7 +165,7 @@ class ProjectService:
             snapshots.append({
                 "id": str(doc.get("id") or doc.get("_id") or ""),
                 "project_id": doc.get("project_id"),
-                "user_id": doc.get("user_id", user_id),
+                "user_id": user_id,
                 "created_at": doc.get("created_at"),
                 "windows": doc.get("windows", []),
                 "tab_groups": doc.get("tab_groups", []),
@@ -163,7 +177,7 @@ class ProjectService:
         async for doc in notes_cursor:
             notes.append({
                 "project_id": doc.get("project_id"),
-                "user_id": doc.get("user_id", user_id),
+                "user_id": user_id,
                 "content": doc.get("content", ""),
                 "updated_at": doc.get("updated_at")
             })

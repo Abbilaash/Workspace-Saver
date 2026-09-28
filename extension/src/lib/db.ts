@@ -1,5 +1,6 @@
 import { openDB, DBSchema, IDBPDatabase } from 'idb';
 import { Project, WorkspaceSnapshot, ProjectNote, Settings } from '../types';
+import { BACKEND_URL } from '../config';
 
 export interface SyncQueueItem {
   id: string;
@@ -164,7 +165,7 @@ export async function getSettings(): Promise<Settings> {
   const settings = await db.get('settings', 'config');
   if (!settings) {
     const initial: Settings = {
-      apiUrl: 'https://workspace-saver-1.onrender.com',
+      apiUrl: BACKEND_URL,
       autoSync: true,
       theme: 'dark',
       userId: crypto.randomUUID()
@@ -178,7 +179,7 @@ export async function getSettings(): Promise<Settings> {
     needsSave = true;
   }
   if (!settings.apiUrl || settings.apiUrl === 'http://localhost:8000') {
-    settings.apiUrl = 'https://workspace-saver-1.onrender.com';
+    settings.apiUrl = BACKEND_URL;
     needsSave = true;
   }
   if (needsSave) {

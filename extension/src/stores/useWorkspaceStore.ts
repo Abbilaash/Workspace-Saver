@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { Project, WorkspaceSnapshot, ProjectNote, CurrentWorkspaceSummary, Settings } from '../types';
+import { BACKEND_URL } from '../config';
 import {
   getAllProjects,
   saveProject,
@@ -71,7 +72,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   isCommandPaletteOpen: false,
   isCreateModalOpen: false,
   settings: {
-    apiUrl: 'https://workspace-saver-1.onrender.com',
+    apiUrl: BACKEND_URL,
     autoSync: true,
     theme: 'dark'
   },

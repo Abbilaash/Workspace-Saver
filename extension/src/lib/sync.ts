@@ -1,4 +1,5 @@
 import { Project, WorkspaceSnapshot, ProjectNote } from '../types';
+import { BACKEND_URL } from '../config';
 import { 
   getSettings, 
   saveSettings,

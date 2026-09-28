@@ -18,11 +18,8 @@ export const OnboardingModal: React.FC = () => {
   const [generatedKey, setGeneratedKey] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
-  // If user setup is already complete and key exists, do not render modal
-  if (settings.isSetupComplete && settings.userId && generatedKey === null && !errorMessage && activeTab !== 'create') {
-    // If setup complete, don't show modal
-  }
-  if (settings.isSetupComplete && settings.userName && settings.userId && generatedKey === null) {
+  // If user setup is already complete and no key generation screen active, do not render modal
+  if (settings.isSetupComplete && settings.userId && generatedKey === null) {
     return null;
   }
 
@@ -49,19 +46,30 @@ export const OnboardingModal: React.FC = () => {
 
   const handleRestoreAccount = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!syncKeyInput.trim()) return;
+    const key = syncKeyInput.trim();
+    if (!key) return;
 
     setIsSubmitting(true);
     setErrorMessage('');
 
     try {
-      const result = await restoreAccountWithSyncKey(syncKeyInput.trim());
-      if (result.success && result.user) {
+      const result = await restoreAccountWithSyncKey(key);
+      if (result.success) {
+        // Update store settings so modal closes and takes user to extension main page
+        await updateSettings({
+          userId: key,
+          userName: result.user?.name || 'Synced User',
+          userEmail: result.user?.email || '',
+          isSetupComplete: true
+        });
+
+        // Trigger cloud sync to load all workspaces from database into store
+        await triggerCloudSync();
+
         setToast({ 
           type: 'success', 
-          text: `Welcome back, ${result.user.name || 'User'}! Restored past workspace history.` 
+          text: `Welcome back! Loaded all saved workspaces from database.` 
         });
-        await triggerCloudSync();
       } else {
         setErrorMessage(result.error || 'Invalid Sync Key. No user history found in MongoDB.');
       }
@@ -81,14 +89,18 @@ export const OnboardingModal: React.FC = () => {
 
   const handleFinishSetup = async () => {
     if (!generatedKey) return;
+    const currentKey = generatedKey;
+    setGeneratedKey(null); // Clear generated key screen to unmount modal
+
     await updateSettings({
-      userName: name.trim(),
+      userName: name.trim() || 'Synced User',
       userEmail: email.trim(),
-      userId: generatedKey,
+      userId: currentKey,
       isSetupComplete: true
     });
-    setToast({ type: 'success', text: `Welcome to Workspace Saver! Unique Sync Key generated.` });
+
     await triggerCloudSync();
+    setToast({ type: 'success', text: `Setup complete! Connected to database.` });
   };
 
   return (
@@ -139,7 +151,7 @@ export const OnboardingModal: React.FC = () => {
                 onClick={handleFinishSetup}
                 className="flex-1 py-2 px-3 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-medium text-xs shadow-md hover:opacity-95 flex items-center justify-center gap-1.5"
               >
-                <span>Get Started</span>
+                <span>Go to Extension</span>
                 <ArrowRight className="w-3.5 h-3.5" />
               </button>
             </div>
@@ -251,7 +263,7 @@ export const OnboardingModal: React.FC = () => {
                   disabled={isSubmitting || !syncKeyInput.trim()}
                   className="w-full mt-2 py-2 px-4 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-semibold text-xs shadow-md hover:opacity-95 active:scale-[0.99] transition-all flex items-center justify-center gap-1.5 disabled:opacity-50"
                 >
-                  <span>{isSubmitting ? 'Fetching Past Workspaces...' : 'Restore Saved Workspaces'}</span>
+                  <span>{isSubmitting ? 'Fetching Database Workspaces...' : 'Restore Saved Workspaces'}</span>
                   <ArrowRight className="w-3.5 h-3.5" />
                 </button>
               </form>

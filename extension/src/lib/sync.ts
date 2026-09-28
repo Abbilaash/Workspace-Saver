@@ -380,13 +380,9 @@ export function syncProjectDeletionToCloud(projectId: string): void {
 }
 
 export async function performFullBiDirectionalSync(): Promise<{ success: boolean; message: string }> {
-  // 1. First pull down any remote data from database into IndexedDB
-  await syncAllFromCloud();
-
-  // 2. Then push any local projects/snapshots to the cloud
   const settings = await getSettings();
-  if (!settings.apiUrl) {
-    return { success: false, message: 'Sync service URL not configured' };
+  if (!settings.apiUrl || !settings.userId) {
+    return { success: false, message: 'Sync service URL or User ID not configured' };
   }
 
   const isHealthy = await checkBackendHealth(settings.apiUrl);
@@ -395,16 +391,25 @@ export async function performFullBiDirectionalSync(): Promise<{ success: boolean
   }
 
   try {
+    // 1. Add all new/local workspaces in extension to database (if syncing didn't happen yet)
     const localProjects = await getAllProjects();
     for (const proj of localProjects) {
-      syncProjectToCloud(proj);
+      await sendProjectToBackend(proj, settings.apiUrl, settings.userId);
       const snapshot = await getLatestSnapshotForProject(proj.id);
-      if (snapshot) syncSnapshotToCloud(snapshot);
+      if (snapshot) {
+        await sendSnapshotToBackend(snapshot, settings.apiUrl, settings.userId);
+      }
       const note = await getNoteForProject(proj.id);
-      if (note) syncNoteToCloud(note);
+      if (note) {
+        await sendNoteToBackend(note, settings.apiUrl, settings.userId);
+      }
     }
     await processSyncQueue();
-    return { success: true, message: 'Bi-directional sync complete.' };
+
+    // 2. Load all workspaces in database to extension
+    await syncAllFromCloud();
+
+    return { success: true, message: 'Extension and Database synchronized successfully' };
   } catch (err: any) {
     return { success: false, message: err.message || 'Sync failed' };
   }

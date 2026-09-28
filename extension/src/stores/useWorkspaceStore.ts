@@ -88,10 +88,10 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         document.documentElement.classList.remove('dark');
       }
 
-      // 1. Fetch latest data directly from MongoDB cloud database if setup is complete
+      // If setup is complete, run 2-step sync: push local unsynced workspaces -> load database workspaces
       if (currentSettings.isSetupComplete && currentSettings.userId) {
         set({ isSyncing: true, settings: currentSettings });
-        await syncAllFromCloud();
+        await performFullBiDirectionalSync();
       }
 
       // 2. Read hydrated database projects and current workspace summary

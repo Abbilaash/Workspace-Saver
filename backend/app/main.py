@@ -1,10 +1,15 @@
-from fastapi import FastAPI
+import logging
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
 from app.config import settings
 from app.db.mongodb import connect_to_mongo, close_mongo_connection
 from app.api import users, projects, snapshots, notes
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("workspace_saver")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -18,6 +23,14 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan
 )
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.error(f"Unhandled exception at {request.url}: {exc}", exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content={"success": False, "error": {"code": "INTERNAL_ERROR", "message": str(exc)}}
+    )
 
 # CORS setup
 origins = [o.strip() for o in settings.CORS_ORIGINS.split(",") if o.strip()]

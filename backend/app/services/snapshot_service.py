@@ -24,17 +24,26 @@ class SnapshotService:
         
         if db is not None:
             await db.snapshots.update_one({"_id": snap_id}, {"$set": doc}, upsert=True)
-            # Update project metadata
+            # Update or create parent project document automatically
             await db.projects.update_one(
                 {"_id": data.project_id},
                 {
                     "$set": {
+                        "id": data.project_id,
+                        "user_id": user_id,
                         "updated_at": now,
                         "tabs_count": data.tabs_count,
                         "groups_count": data.groups_count,
                         "last_snapshot_time": doc["created_at"]
+                    },
+                    "$setOnInsert": {
+                        "name": "Workspace",
+                        "description": "",
+                        "color": "purple",
+                        "created_at": now
                     }
-                }
+                },
+                upsert=True
             )
 
         return SnapshotResponse(

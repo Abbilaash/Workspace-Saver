@@ -1,8 +1,9 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict
 from typing import Optional
 from datetime import datetime
 
 class ProjectCreate(BaseModel):
+    model_config = ConfigDict(extra="ignore")
     id: Optional[str] = None
     name: str
     description: Optional[str] = ""
@@ -12,11 +13,13 @@ class ProjectCreate(BaseModel):
     updated_at: Optional[str] = None
 
 class ProjectUpdate(BaseModel):
+    model_config = ConfigDict(extra="ignore")
     name: Optional[str] = None
     description: Optional[str] = None
     color: Optional[str] = None
 
 class ProjectResponse(BaseModel):
+    model_config = ConfigDict(extra="ignore")
     id: str
     name: str
     description: Optional[str] = ""

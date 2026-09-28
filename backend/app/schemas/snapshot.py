@@ -1,7 +1,8 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict
 from typing import List, Optional
 
 class WorkspaceTabSchema(BaseModel):
+    model_config = ConfigDict(extra="ignore")
     url: str
     title: str
     index: int
@@ -14,6 +15,7 @@ class WorkspaceTabSchema(BaseModel):
     selectedText: Optional[str] = None
 
 class WorkspaceWindowSchema(BaseModel):
+    model_config = ConfigDict(extra="ignore")
     originalWindowId: Optional[int] = None
     left: Optional[int] = None
     top: Optional[int] = None
@@ -22,12 +24,14 @@ class WorkspaceWindowSchema(BaseModel):
     tabs: List[WorkspaceTabSchema] = []
 
 class TabGroupSchema(BaseModel):
+    model_config = ConfigDict(extra="ignore")
     id: int
     title: str
     color: str
     collapsed: Optional[bool] = False
 
 class SnapshotCreate(BaseModel):
+    model_config = ConfigDict(extra="ignore")
     id: Optional[str] = None
     project_id: str
     user_id: Optional[str] = "default_user"
@@ -38,6 +42,7 @@ class SnapshotCreate(BaseModel):
     groups_count: int = 0
 
 class SnapshotResponse(BaseModel):
+    model_config = ConfigDict(extra="ignore")
     id: str
     project_id: str
     user_id: str

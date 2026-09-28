@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 
 from app.config import settings
 from app.db.mongodb import connect_to_mongo, close_mongo_connection
-from app.api import users, projects, snapshots, notes, auth
+from app.api import users, projects, snapshots, notes
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("workspace_saver")
@@ -52,7 +52,6 @@ else:
     )
 
 # Include API routers
-app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(projects.router)
 app.include_router(snapshots.router)

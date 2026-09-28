@@ -33,94 +33,83 @@ export async function checkBackendHealth(apiUrl: string): Promise<boolean> {
   return false;
 }
 
-export async function registerUserInCloud(name: string, email: string): Promise<{ success: boolean; user?: any; error?: string }> {
+export async function syncUserToCloud(name: string, email: string): Promise<{ success: boolean; userId: string; user?: any; error?: string }> {
   const settings = await getSettings();
-  const apiUrl = settings.apiUrl || 'https://workspace-saver-1.onrender.com';
+  const userId = settings.userId || crypto.randomUUID();
 
   try {
-    const res = await fetch(`${apiUrl}/users`, {
+    const res = await fetch(`${settings.apiUrl}/users`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        id: userId,
         name: name.trim(),
-        email: email.trim().toLowerCase()
+        email: email.trim()
       })
     });
 
     if (res.ok) {
       const json = await res.json();
-      if (json.success && json.data) {
-        const user = json.data;
-        settings.userId = user.id;
-        settings.userName = user.name;
-        settings.userEmail = user.email;
-        settings.isSetupComplete = true;
-        await saveSettings(settings);
-        return { success: true, user };
-      }
+      const user = json.data || {};
+      const returnedUserId = user.id || userId;
+      settings.userId = returnedUserId;
+      settings.userName = name.trim();
+      settings.userEmail = email.trim();
+      settings.isSetupComplete = true;
+      await saveSettings(settings);
+      return { success: true, userId: returnedUserId, user };
     } else {
       const json = await res.json().catch(() => ({}));
-      return { success: false, error: json.detail?.error?.message || json.detail || 'Failed to create user' };
+      return { success: false, userId, error: json.detail?.error?.message || 'Failed to create user' };
     }
   } catch (err: any) {
-    console.error('Registration backend error:', err);
-    // Fallback offline UUID generation
-    const fallbackId = settings.userId || crypto.randomUUID();
-    settings.userId = fallbackId;
-    settings.userName = name.trim();
-    settings.userEmail = email.trim();
-    settings.isSetupComplete = true;
-    await saveSettings(settings);
-    return { success: true, user: { id: fallbackId, name, email } };
+    console.warn('Could not sync user to backend:', err);
   }
 
-  return { success: false, error: 'Registration failed' };
+  settings.userId = userId;
+  settings.userName = name.trim();
+  settings.userEmail = email.trim();
+  settings.isSetupComplete = true;
+  await saveSettings(settings);
+  return { success: true, userId };
 }
 
-export async function connectExistingUserById(syncId: string): Promise<{ success: boolean; user?: any; error?: string }> {
+export async function restoreAccountWithSyncKey(syncKey: string): Promise<{ success: boolean; user?: any; projectsCount?: number; error?: string }> {
   const settings = await getSettings();
-  const apiUrl = settings.apiUrl || 'https://workspace-saver-1.onrender.com';
-  const cleanId = syncId.trim();
+  const cleanKey = syncKey.trim();
 
-  if (!cleanId) {
-    return { success: false, error: 'Please enter a valid Unique Sync ID' };
+  if (!cleanKey) {
+    return { success: false, error: 'Sync Key is required' };
   }
 
   try {
-    const res = await fetch(`${apiUrl}/users/${encodeURIComponent(cleanId)}`, {
-      method: 'GET',
-      headers: { 'Accept': 'application/json' }
-    });
-
-    if (res.ok) {
-      const json = await res.json();
-      if (json.success && json.data) {
-        const user = json.data;
-        settings.userId = user.id;
-        settings.userName = user.name;
-        settings.userEmail = user.email;
-        settings.isSetupComplete = true;
-        await saveSettings(settings);
-
-        // Instantly sync down all workspace data from database
-        await syncAllFromCloud();
-
-        return { success: true, user };
-      }
-    } else {
-      return { success: false, error: 'Sync ID not found in database. Double-check your ID.' };
+    // 1. Check if user exists on backend
+    const res = await fetch(`${settings.apiUrl}/users/${encodeURIComponent(cleanKey)}`);
+    if (!res.ok) {
+      return { success: false, error: 'Invalid Sync Key. No user history found.' };
     }
+
+    const json = await res.json();
+    const user = json.data;
+
+    // 2. Save account settings
+    settings.userId = cleanKey;
+    settings.userName = user.name || 'Synced User';
+    settings.userEmail = user.email || '';
+    settings.isSetupComplete = true;
+    await saveSettings(settings);
+
+    // 3. Hydrate all past user projects/snapshots from database into IndexedDB
+    const syncRes = await syncAllFromCloud();
+
+    return { 
+      success: true, 
+      user, 
+      projectsCount: syncRes.projectsCount || 0 
+    };
   } catch (err: any) {
-    console.error('Connect sync ID error:', err);
-    return { success: false, error: 'Could not connect to backend to verify Sync ID.' };
+    return { success: false, error: err.message || 'Error connecting to backend database' };
   }
-
-  return { success: false, error: 'Invalid Sync ID' };
-}
-
-export async function syncUserToCloud(name: string, email: string): Promise<{ success: boolean; userId: string }> {
-  const result = await registerUserInCloud(name, email);
-  return { success: result.success, userId: result.user?.id || '' };
 }
 
 export async function syncAllFromCloud(): Promise<{ success: boolean; projectsCount?: number }> {

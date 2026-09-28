@@ -1,5 +1,5 @@
-import React from 'react';
-import { LayoutGrid, Command, Sun, Moon, RefreshCw, CloudCheck } from 'lucide-react';
+import React, { useState } from 'react';
+import { LayoutGrid, Command, Sun, Moon, RefreshCw, Key, Check } from 'lucide-react';
 import { useWorkspaceStore } from '../stores/useWorkspaceStore';
 
 export const Header: React.FC = () => {
@@ -9,11 +9,22 @@ export const Header: React.FC = () => {
     updateSettings,
     selectProject,
     isSyncing,
-    triggerCloudSync
+    triggerCloudSync,
+    setToast
   } = useWorkspaceStore();
+
+  const [copiedKey, setCopiedKey] = useState(false);
 
   const toggleTheme = () => {
     updateSettings({ theme: settings.theme === 'dark' ? 'light' : 'dark' });
+  };
+
+  const copySyncKey = () => {
+    if (!settings.userId) return;
+    navigator.clipboard.writeText(settings.userId);
+    setCopiedKey(true);
+    setToast({ type: 'success', text: `Sync Key copied: ${settings.userId.slice(0, 8)}...` });
+    setTimeout(() => setCopiedKey(false), 2000);
   };
 
   return (
@@ -39,6 +50,16 @@ export const Header: React.FC = () => {
       </div>
 
       <div className="flex items-center gap-1">
+        {settings.userId && (
+          <button
+            onClick={copySyncKey}
+            className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors relative"
+            title={`Copy Your Sync Key (${settings.userId})`}
+          >
+            {copiedKey ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Key className="w-3.5 h-3.5 text-indigo-400" />}
+          </button>
+        )}
+
         <button
           onClick={() => triggerCloudSync()}
           disabled={isSyncing}

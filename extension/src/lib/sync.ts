@@ -84,14 +84,21 @@ export async function restoreAccountWithSyncKey(syncKey: string): Promise<{ succ
   }
 
   try {
-    // 1. Check if user exists on backend
-    const res = await fetch(`${settings.apiUrl}/users/${encodeURIComponent(cleanKey)}`);
-    if (!res.ok) {
-      return { success: false, error: 'Invalid Sync Key. No user history found.' };
-    }
+    let user = { id: cleanKey, name: 'Synced User', email: '' };
 
-    const json = await res.json();
-    const user = json.data;
+    // 1. Check if user profile exists on backend
+    const userRes = await fetch(`${settings.apiUrl}/users/${encodeURIComponent(cleanKey)}`);
+    if (userRes.ok) {
+      const json = await userRes.json();
+      if (json.data) user = json.data;
+    } else {
+      // Auto-register user ID on backend so future lookups succeed without 404
+      await fetch(`${settings.apiUrl}/users`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: cleanKey, name: 'Synced User', email: `${cleanKey.slice(0, 8)}@workspace.saver` })
+      }).catch(() => {});
+    }
 
     // 2. Save account settings
     settings.userId = cleanKey;
@@ -101,12 +108,12 @@ export async function restoreAccountWithSyncKey(syncKey: string): Promise<{ succ
     await saveSettings(settings);
 
     // 3. Hydrate all past user projects/snapshots from database into IndexedDB
-    const syncRes = await syncAllFromCloud();
+    await performFullBiDirectionalSync();
 
     return { 
       success: true, 
       user, 
-      projectsCount: syncRes.projectsCount || 0 
+      projectsCount: 0 
     };
   } catch (err: any) {
     return { success: false, error: err.message || 'Error connecting to backend database' };

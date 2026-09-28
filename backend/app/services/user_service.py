@@ -41,14 +41,30 @@ class UserService:
     @staticmethod
     async def get_user_by_id(user_id: str):
         db = get_database()
-        if db is None:
+        if db is None or not user_id:
             return None
-        doc = await db.users.find_one({"_id": user_id})
+
+        doc = await db.users.find_one({"$or": [{"_id": user_id}, {"id": user_id}]})
         if not doc:
-            return None
+            # Fallback: check if projects or snapshots exist for this user_id in MongoDB
+            proj = await db.projects.find_one({"user_id": user_id})
+            snap = await db.snapshots.find_one({"user_id": user_id})
+            if proj or snap:
+                now = datetime.utcnow().isoformat()
+                doc = {
+                    "_id": user_id,
+                    "id": user_id,
+                    "name": "Synced User",
+                    "email": "",
+                    "created_at": now
+                }
+                await db.users.update_one({"_id": user_id}, {"$set": doc}, upsert=True)
+            else:
+                return None
+
         return UserResponse(
-            id=doc["_id"],
-            name=doc.get("name", ""),
+            id=str(doc.get("id") or doc.get("_id") or user_id),
+            name=doc.get("name", "Synced User"),
             email=doc.get("email", ""),
             created_at=doc.get("created_at", datetime.utcnow().isoformat())
         )

@@ -12,7 +12,17 @@ import {
   saveSettings
 } from '../lib/db';
 import { captureWorkspace, restoreWorkspace, getCurrentWorkspaceSummary } from '../services/tabManager';
-import { syncProjectToCloud, syncSnapshotToCloud, syncNoteToCloud, syncProjectDeletionToCloud, processSyncQueue, performFullBiDirectionalSync } from '../lib/sync';
+import { 
+  syncProjectToCloud, 
+  syncSnapshotToCloud, 
+  syncNoteToCloud, 
+  syncProjectDeletionToCloud, 
+  processSyncQueue, 
+  performFullBiDirectionalSync,
+  syncAllFromCloud,
+  fetchProjectSnapshotsFromCloud,
+  fetchProjectNoteFromCloud
+} from '../lib/sync';
 
 interface WorkspaceStore {
   projects: Project[];
@@ -69,17 +79,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
 
   loadInitialData: async () => {
     try {
-      const [projectsList, currentSummary, currentSettings] = await Promise.all([
-        getAllProjects(),
-        getCurrentWorkspaceSummary(),
-        getSettings()
-      ]);
-
-      set({
-        projects: projectsList,
-        currentWorkspace: currentSummary,
-        settings: currentSettings
-      });
+      const currentSettings = await getSettings();
 
       // Apply theme class
       if (currentSettings.theme === 'dark') {
@@ -88,14 +88,30 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         document.documentElement.classList.remove('dark');
       }
 
-      // Automatically trigger bi-directional sync if setup complete
-      if (currentSettings.isSetupComplete) {
-        get().triggerCloudSync();
-      } else {
-        processSyncQueue().catch(() => { });
+      // 1. Fetch latest data directly from MongoDB cloud database if setup is complete
+      if (currentSettings.isSetupComplete && currentSettings.userId) {
+        set({ isSyncing: true, settings: currentSettings });
+        await syncAllFromCloud();
       }
+
+      // 2. Read hydrated database projects and current workspace summary
+      const [projectsList, currentSummary] = await Promise.all([
+        getAllProjects(),
+        getCurrentWorkspaceSummary()
+      ]);
+
+      set({
+        projects: projectsList,
+        currentWorkspace: currentSummary,
+        settings: currentSettings,
+        isSyncing: false
+      });
+
+      // Background process any offline sync queue items
+      processSyncQueue().catch(() => { });
     } catch (err) {
       console.error('Failed to load initial workspace store data:', err);
+      set({ isSyncing: false });
     }
   },
 
@@ -105,6 +121,12 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       await performFullBiDirectionalSync();
       const updatedProjects = await getAllProjects();
       set({ projects: updatedProjects, isSyncing: false });
+
+      // Refresh current selected project snapshot if open
+      const { selectedProject } = get();
+      if (selectedProject) {
+        get().selectProject(selectedProject.id);
+      }
     } catch (err) {
       console.warn('Cloud sync error:', err);
       set({ isSyncing: false });
@@ -121,16 +143,47 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     const proj = projects.find(p => p.id === projectId);
     if (!proj) return;
 
-    const [snapshot, note] = await Promise.all([
+    // Load from local storage for instant response
+    const [localSnapshot, localNote] = await Promise.all([
       getLatestSnapshotForProject(projectId),
       getNoteForProject(projectId)
     ]);
 
     set({
       selectedProject: proj,
-      selectedSnapshot: snapshot || null,
-      selectedNote: note || { projectId, content: '', updatedAt: new Date().toISOString() }
+      selectedSnapshot: localSnapshot || null,
+      selectedNote: localNote || { projectId, content: '', updatedAt: new Date().toISOString() }
     });
+
+    // Also fetch latest snapshot & note directly from MongoDB database asynchronously
+    try {
+      const [cloudSnapshots, cloudNote] = await Promise.all([
+        fetchProjectSnapshotsFromCloud(projectId),
+        fetchProjectNoteFromCloud(projectId)
+      ]);
+
+      let updatedSnapshot = localSnapshot;
+      if (cloudSnapshots && cloudSnapshots.length > 0) {
+        // Sort descending by date
+        cloudSnapshots.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        const latestCloudSnap = cloudSnapshots[0];
+        await saveSnapshot(latestCloudSnap);
+        updatedSnapshot = latestCloudSnap;
+      }
+
+      let updatedNote = localNote;
+      if (cloudNote) {
+        await saveNote(cloudNote);
+        updatedNote = cloudNote;
+      }
+
+      set({
+        selectedSnapshot: updatedSnapshot || null,
+        selectedNote: updatedNote || { projectId, content: '', updatedAt: new Date().toISOString() }
+      });
+    } catch (err) {
+      // Ignore background network error if offline
+    }
   },
 
   createNewProject: async (name: string, color: string, description?: string) => {
@@ -143,9 +196,9 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       updatedAt: new Date().toISOString()
     };
 
-    // Save locally with 0ms latency
+    // Save locally
     await saveProject(newProj);
-    // Fire-and-forget sync (or queue if offline)
+    // Sync to MongoDB database
     syncProjectToCloud(newProj);
 
     // Automatically capture current workspace for the new project
@@ -167,12 +220,13 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     newProj.groupsCount = captured.groupsCount;
     newProj.lastSnapshotTime = snapshot.createdAt;
     await saveProject(newProj);
+    syncProjectToCloud(newProj);
 
     const updatedProjects = await getAllProjects();
     set({ projects: updatedProjects });
 
     await get().selectProject(newProj.id);
-    get().setToast({ type: 'success', text: `Project "${name}" created and workspace saved.` });
+    get().setToast({ type: 'success', text: `Project "${name}" created and synced to database.` });
 
     return newProj;
   },
@@ -218,7 +272,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         isSaving: false
       });
 
-      get().setToast({ type: 'success', text: `Workspace saved for "${proj.name}".` });
+      get().setToast({ type: 'success', text: `Workspace saved & synced for "${proj.name}".` });
     } catch (err: any) {
       set({ isSaving: false });
       get().setToast({ type: 'error', text: err.message || 'Failed to save workspace' });
@@ -226,9 +280,17 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   },
 
   restoreProjectWorkspace: async (projectId: string) => {
-    const snapshot = await getLatestSnapshotForProject(projectId);
-    const { projects } = get();
-    const proj = projects.find(p => p.id === projectId);
+    let snapshot = await getLatestSnapshotForProject(projectId);
+
+    // If missing locally, try fetching directly from MongoDB database
+    if (!snapshot) {
+      const cloudSnapshots = await fetchProjectSnapshotsFromCloud(projectId);
+      if (cloudSnapshots && cloudSnapshots.length > 0) {
+        cloudSnapshots.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        snapshot = cloudSnapshots[0];
+        await saveSnapshot(snapshot);
+      }
+    }
 
     if (!snapshot || !snapshot.windows || snapshot.windows.length === 0) {
       get().setToast({ type: 'error', text: 'No saved workspace snapshot found for this project.' });
@@ -367,7 +429,6 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     if (tabIndex < 0 || tabIndex >= tabs.length) return;
 
     tabs.splice(tabIndex, 1);
-    // Re-index remaining tabs
     tabs.forEach((t, idx) => { t.index = idx; });
 
     snapshot.windows[0].tabs = tabs;

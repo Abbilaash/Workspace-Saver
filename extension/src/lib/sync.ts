@@ -129,7 +129,7 @@ export async function syncAllFromCloud(): Promise<{ success: boolean; projectsCo
       if (json.success && json.data) {
         const { projects, snapshots, notes } = json.data;
 
-        // Hydrate projects into local IndexedDB
+        // Hydrate projects into local IndexedDB with full field mappings
         if (Array.isArray(projects)) {
           for (const proj of projects) {
             await saveProject({
@@ -138,7 +138,10 @@ export async function syncAllFromCloud(): Promise<{ success: boolean; projectsCo
               description: proj.description || '',
               color: proj.color || '#6366f1',
               createdAt: proj.created_at || new Date().toISOString(),
-              updatedAt: proj.updated_at || new Date().toISOString()
+              updatedAt: proj.updated_at || new Date().toISOString(),
+              tabsCount: proj.tabs_count ?? 0,
+              groupsCount: proj.groups_count ?? 0,
+              lastSnapshotTime: proj.last_snapshot_time || proj.updated_at
             });
           }
         }
@@ -152,8 +155,8 @@ export async function syncAllFromCloud(): Promise<{ success: boolean; projectsCo
               createdAt: snap.created_at || new Date().toISOString(),
               windows: snap.windows || [],
               tabGroups: snap.tab_groups || [],
-              tabsCount: snap.tabs_count || 0,
-              groupsCount: snap.groups_count || 0
+              tabsCount: snap.tabs_count ?? 0,
+              groupsCount: snap.groups_count ?? 0
             });
           }
         }
@@ -177,6 +180,60 @@ export async function syncAllFromCloud(): Promise<{ success: boolean; projectsCo
   }
 
   return { success: false };
+}
+
+export async function fetchProjectSnapshotsFromCloud(projectId: string): Promise<WorkspaceSnapshot[]> {
+  const settings = await getSettings();
+  if (!settings.apiUrl) return [];
+
+  try {
+    const res = await fetch(`${settings.apiUrl}/projects/${projectId}/snapshots`, {
+      method: 'GET',
+      headers: { 'Accept': 'application/json' }
+    });
+    if (res.ok) {
+      const json = await res.json();
+      if (json.success && Array.isArray(json.data)) {
+        return json.data.map((snap: any) => ({
+          id: snap.id,
+          projectId: snap.project_id,
+          createdAt: snap.created_at,
+          windows: snap.windows || [],
+          tabGroups: snap.tab_groups || [],
+          tabsCount: snap.tabs_count || 0,
+          groupsCount: snap.groups_count || 0
+        }));
+      }
+    }
+  } catch (err) {
+    console.warn('Fetch snapshots from cloud failed:', err);
+  }
+  return [];
+}
+
+export async function fetchProjectNoteFromCloud(projectId: string): Promise<ProjectNote | null> {
+  const settings = await getSettings();
+  if (!settings.apiUrl) return null;
+
+  try {
+    const res = await fetch(`${settings.apiUrl}/projects/${projectId}/notes`, {
+      method: 'GET',
+      headers: { 'Accept': 'application/json' }
+    });
+    if (res.ok) {
+      const json = await res.json();
+      if (json.success && json.data) {
+        return {
+          projectId: json.data.project_id || projectId,
+          content: json.data.content || '',
+          updatedAt: json.data.updated_at || new Date().toISOString()
+        };
+      }
+    }
+  } catch (err) {
+    console.warn('Fetch note from cloud failed:', err);
+  }
+  return null;
 }
 
 export async function processSyncQueue(): Promise<void> {

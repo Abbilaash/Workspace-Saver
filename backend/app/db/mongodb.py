@@ -8,10 +8,13 @@ class MongoDB:
 db_wrapper = MongoDB()
 
 async def connect_to_mongo():
-    print(f"Connecting to MongoDB at {settings.MONGODB_URI}...")
-    db_wrapper.client = AsyncIOMotorClient(settings.MONGODB_URI)
-    db_wrapper.db = db_wrapper.client[settings.MONGODB_DATABASE]
-    print(f"Connected to database: {settings.MONGODB_DATABASE}")
+    uri = settings.MONGODB_URI
+    db_name = settings.MONGODB_DATABASE
+    host_info = uri.split("@")[-1] if "@" in uri else uri
+    print(f"Connecting to MongoDB at ...@{host_info} (db: {db_name})...")
+    db_wrapper.client = AsyncIOMotorClient(uri)
+    db_wrapper.db = db_wrapper.client[db_name]
+    print(f"Connected to database: {db_name}")
 
 async def close_mongo_connection():
     if db_wrapper.client:

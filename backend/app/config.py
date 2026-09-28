@@ -1,5 +1,12 @@
 import os
+from dotenv import load_dotenv
 from pydantic_settings import BaseSettings
+
+# Load .env file from backend directory or parent directory
+load_dotenv()
+backend_env = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "backend", ".env")
+if os.path.exists(backend_env):
+    load_dotenv(backend_env)
 
 class Settings(BaseSettings):
     MONGODB_URI: str = os.getenv("MONGODB_URI", "mongodb://localhost:27017")

@@ -95,10 +95,10 @@ export async function saveProject(project: Project): Promise<void> {
 export async function deleteProjectFromDB(id: string): Promise<void> {
   const db = await getDB();
   const tx = db.transaction(['projects', 'snapshots', 'notes'], 'readwrite');
-  
+
   // Delete project
   await tx.objectStore('projects').delete(id);
-  
+
   // Delete project snapshots
   const snapshotIndex = tx.objectStore('snapshots').index('by-projectId');
   let cursor = await snapshotIndex.openCursor(id);
@@ -164,7 +164,7 @@ export async function getSettings(): Promise<Settings> {
   const settings = await db.get('settings', 'config');
   if (!settings) {
     const initial: Settings = {
-      apiUrl: 'https://workspace-saver.onrender.com',
+      apiUrl: 'https://workspace-saver-1.onrender.com',
       autoSync: true,
       theme: 'dark',
       userId: crypto.randomUUID()
@@ -178,7 +178,7 @@ export async function getSettings(): Promise<Settings> {
     needsSave = true;
   }
   if (!settings.apiUrl || settings.apiUrl === 'http://localhost:8000') {
-    settings.apiUrl = 'https://workspace-saver.onrender.com';
+    settings.apiUrl = 'https://workspace-saver-1.onrender.com';
     needsSave = true;
   }
   if (needsSave) {

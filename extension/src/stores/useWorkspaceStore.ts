@@ -1,12 +1,12 @@
 import { create } from 'zustand';
 import { Project, WorkspaceSnapshot, ProjectNote, CurrentWorkspaceSummary, Settings } from '../types';
-import { 
-  getAllProjects, 
-  saveProject, 
-  deleteProjectFromDB, 
-  saveSnapshot, 
-  getLatestSnapshotForProject, 
-  getNoteForProject, 
+import {
+  getAllProjects,
+  saveProject,
+  deleteProjectFromDB,
+  saveSnapshot,
+  getLatestSnapshotForProject,
+  getNoteForProject,
   saveNote,
   getSettings,
   saveSettings
@@ -58,7 +58,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   isCommandPaletteOpen: false,
   isCreateModalOpen: false,
   settings: {
-    apiUrl: 'https://workspace-saver.onrender.com',
+    apiUrl: 'https://workspace-saver-1.onrender.com',
     autoSync: true,
     theme: 'dark'
   },
@@ -72,10 +72,10 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         getSettings()
       ]);
 
-      set({ 
-        projects: projectsList, 
+      set({
+        projects: projectsList,
         currentWorkspace: currentSummary,
-        settings: currentSettings 
+        settings: currentSettings
       });
 
       // Apply theme class
@@ -86,7 +86,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       }
 
       // Process any background offline sync queue items asynchronously
-      processSyncQueue().catch(() => {});
+      processSyncQueue().catch(() => { });
     } catch (err) {
       console.error('Failed to load initial workspace store data:', err);
     }
@@ -193,10 +193,10 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       syncProjectToCloud(proj);
 
       const updatedProjects = await getAllProjects();
-      set({ 
-        projects: updatedProjects, 
+      set({
+        projects: updatedProjects,
         selectedSnapshot: snapshot,
-        isSaving: false 
+        isSaving: false
       });
 
       get().setToast({ type: 'success', text: `Workspace saved for "${proj.name}".` });
@@ -220,9 +220,9 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     try {
       const result = await restoreWorkspace(snapshot.windows, snapshot.tabGroups || []);
       set({ isRestoring: false });
-      get().setToast({ 
-        type: result.success ? 'success' : 'error', 
-        text: result.message 
+      get().setToast({
+        type: result.success ? 'success' : 'error',
+        text: result.message
       });
     } catch (err: any) {
       set({ isRestoring: false });
@@ -233,13 +233,13 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   deleteProject: async (projectId: string) => {
     const { projects, selectedProject } = get();
     const proj = projects.find(p => p.id === projectId);
-    
+
     await deleteProjectFromDB(projectId);
     syncProjectDeletionToCloud(projectId);
 
     const updatedProjects = await getAllProjects();
 
-    set({ 
+    set({
       projects: updatedProjects,
       selectedProject: selectedProject?.id === projectId ? null : selectedProject,
       selectedSnapshot: selectedProject?.id === projectId ? null : get().selectedSnapshot,
@@ -382,7 +382,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     const current = get().settings;
     const updated = { ...current, ...newSettings };
     await saveSettings(updated);
-    
+
     if (updated.theme === 'dark') {
       document.documentElement.classList.add('dark');
     } else {

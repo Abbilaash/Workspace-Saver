@@ -20,6 +20,11 @@ async def clear_cloud_data():
     await ProjectService.clear_all_cloud_data()
     return {"success": True, "data": {"message": "All cloud database records cleared successfully"}}
 
+@router.get("/sync-all", response_model=dict)
+async def sync_all_user_data(user_id: str):
+    data = await ProjectService.get_all_user_data(user_id=user_id)
+    return {"success": True, "data": data}
+
 @router.get("/{project_id}", response_model=dict)
 async def get_project(project_id: str):
     project = await ProjectService.get_project(project_id)

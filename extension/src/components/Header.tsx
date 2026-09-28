@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutGrid, Command, Sun, Moon } from 'lucide-react';
+import { LayoutGrid, Command, Sun, Moon, RefreshCw, CloudCheck } from 'lucide-react';
 import { useWorkspaceStore } from '../stores/useWorkspaceStore';
 
 export const Header: React.FC = () => {
@@ -7,7 +7,9 @@ export const Header: React.FC = () => {
     setCommandPaletteOpen, 
     settings, 
     updateSettings,
-    selectProject
+    selectProject,
+    isSyncing,
+    triggerCloudSync
   } = useWorkspaceStore();
 
   const toggleTheme = () => {
@@ -26,11 +28,26 @@ export const Header: React.FC = () => {
         <div>
           <h1 className="text-sm font-semibold tracking-tight text-foreground flex items-center gap-1.5">
             Workspace Saver
+            {isSyncing && (
+              <span className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-indigo-500/15 text-indigo-400 border border-indigo-500/30 animate-pulse">
+                <RefreshCw className="w-2.5 h-2.5 animate-spin" />
+                Syncing...
+              </span>
+            )}
           </h1>
         </div>
       </div>
 
       <div className="flex items-center gap-1">
+        <button
+          onClick={() => triggerCloudSync()}
+          disabled={isSyncing}
+          className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-50"
+          title="Manual Cloud Sync"
+        >
+          <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin text-indigo-400' : ''}`} />
+        </button>
+
         <button
           onClick={() => setCommandPaletteOpen(true)}
           className="flex items-center gap-1 text-[11px] px-2 py-1 rounded-md bg-muted text-muted-foreground hover:text-foreground hover:bg-accent transition-colors border border-border/50"

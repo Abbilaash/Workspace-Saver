@@ -12,7 +12,7 @@ import {
   saveSettings
 } from '../lib/db';
 import { captureWorkspace, restoreWorkspace, getCurrentWorkspaceSummary } from '../services/tabManager';
-import { syncProjectToCloud, syncSnapshotToCloud, syncNoteToCloud, syncProjectDeletionToCloud, processSyncQueue } from '../lib/sync';
+import { syncProjectToCloud, syncSnapshotToCloud, syncNoteToCloud, syncProjectDeletionToCloud, processSyncQueue, performFullBiDirectionalSync } from '../lib/sync';
 
 interface WorkspaceStore {
   projects: Project[];
@@ -23,6 +23,7 @@ interface WorkspaceStore {
   searchQuery: string;
   isSaving: boolean;
   isRestoring: boolean;
+  isSyncing: boolean;
   isCommandPaletteOpen: boolean;
   isCreateModalOpen: boolean;
   settings: Settings;
@@ -30,6 +31,7 @@ interface WorkspaceStore {
 
   // Actions
   loadInitialData: () => Promise<void>;
+  triggerCloudSync: () => Promise<void>;
   selectProject: (projectId: string | null) => Promise<void>;
   createNewProject: (name: string, color: string, description?: string) => Promise<Project>;
   saveCurrentWorkspace: (targetProjectId?: string) => Promise<void>;
@@ -55,6 +57,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   searchQuery: '',
   isSaving: false,
   isRestoring: false,
+  isSyncing: false,
   isCommandPaletteOpen: false,
   isCreateModalOpen: false,
   settings: {
@@ -85,10 +88,26 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         document.documentElement.classList.remove('dark');
       }
 
-      // Process any background offline sync queue items asynchronously
-      processSyncQueue().catch(() => { });
+      // Automatically trigger bi-directional sync if setup complete
+      if (currentSettings.isSetupComplete) {
+        get().triggerCloudSync();
+      } else {
+        processSyncQueue().catch(() => { });
+      }
     } catch (err) {
       console.error('Failed to load initial workspace store data:', err);
+    }
+  },
+
+  triggerCloudSync: async () => {
+    set({ isSyncing: true });
+    try {
+      await performFullBiDirectionalSync();
+      const updatedProjects = await getAllProjects();
+      set({ projects: updatedProjects, isSyncing: false });
+    } catch (err) {
+      console.warn('Cloud sync error:', err);
+      set({ isSyncing: false });
     }
   },
 

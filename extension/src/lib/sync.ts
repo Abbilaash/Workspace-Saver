@@ -1,7 +1,11 @@
 import { Project, WorkspaceSnapshot, ProjectNote } from '../types';
 import { 
   getSettings, 
+  saveSettings,
   getAllProjects, 
+  saveProject,
+  saveSnapshot,
+  saveNote,
   getLatestSnapshotForProject, 
   getNoteForProject, 
   addToSyncQueue, 
@@ -27,6 +31,49 @@ export async function checkBackendHealth(apiUrl: string): Promise<boolean> {
     // Silent catch for offline status
   }
   return false;
+}
+
+export async function authenticateWithGoogle(payload: {
+  id_token?: string;
+  access_token?: string;
+  email?: string;
+  name?: string;
+  picture?: string;
+  google_id?: string;
+}): Promise<{ success: boolean; user?: any; token?: string; error?: string }> {
+  const settings = await getSettings();
+  const apiUrl = settings.apiUrl || 'https://workspace-saver-1.onrender.com';
+
+  try {
+    const res = await fetch(`${apiUrl}/auth/google`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    if (res.ok) {
+      const json = await res.json();
+      if (json.success && json.data) {
+        const { token, user } = json.data;
+        settings.userId = user.id;
+        settings.userName = user.name;
+        settings.userEmail = user.email;
+        settings.userPicture = user.picture;
+        settings.authToken = token;
+        settings.isSetupComplete = true;
+        await saveSettings(settings);
+        return { success: true, user, token };
+      }
+    } else {
+      const json = await res.json().catch(() => ({}));
+      return { success: false, error: json.detail?.error?.message || json.detail || 'Authentication failed' };
+    }
+  } catch (err: any) {
+    console.error('Google Auth backend error:', err);
+    return { success: false, error: err.message || 'Network error connecting to backend' };
+  }
+
+  return { success: false, error: 'Authentication failed' };
 }
 
 export async function syncUserToCloud(name: string, email: string): Promise<{ success: boolean; userId: string }> {
@@ -64,6 +111,78 @@ export async function syncUserToCloud(name: string, email: string): Promise<{ su
   settings.isSetupComplete = true;
   await saveSettings(settings);
   return { success: true, userId };
+}
+
+export async function syncAllFromCloud(): Promise<{ success: boolean; projectsCount?: number }> {
+  const settings = await getSettings();
+  if (!settings.apiUrl || !settings.userId) {
+    return { success: false };
+  }
+
+  try {
+    const headers: Record<string, string> = { 'Accept': 'application/json' };
+    if (settings.authToken) {
+      headers['Authorization'] = `Bearer ${settings.authToken}`;
+    }
+
+    const res = await fetch(`${settings.apiUrl}/projects/sync-all?user_id=${encodeURIComponent(settings.userId)}`, {
+      method: 'GET',
+      headers
+    });
+
+    if (res.ok) {
+      const json = await res.json();
+      if (json.success && json.data) {
+        const { projects, snapshots, notes } = json.data;
+
+        // Hydrate projects into local IndexedDB
+        if (Array.isArray(projects)) {
+          for (const proj of projects) {
+            await saveProject({
+              id: proj.id,
+              name: proj.name,
+              description: proj.description || '',
+              color: proj.color || '#6366f1',
+              createdAt: proj.created_at || new Date().toISOString(),
+              updatedAt: proj.updated_at || new Date().toISOString()
+            });
+          }
+        }
+
+        // Hydrate snapshots into local IndexedDB
+        if (Array.isArray(snapshots)) {
+          for (const snap of snapshots) {
+            await saveSnapshot({
+              id: snap.id,
+              projectId: snap.project_id,
+              createdAt: snap.created_at || new Date().toISOString(),
+              windows: snap.windows || [],
+              tabGroups: snap.tab_groups || [],
+              tabsCount: snap.tabs_count || 0,
+              groupsCount: snap.groups_count || 0
+            });
+          }
+        }
+
+        // Hydrate notes into local IndexedDB
+        if (Array.isArray(notes)) {
+          for (const n of notes) {
+            await saveNote({
+              projectId: n.project_id,
+              content: n.content || '',
+              updatedAt: n.updated_at || new Date().toISOString()
+            });
+          }
+        }
+
+        return { success: true, projectsCount: projects?.length || 0 };
+      }
+    }
+  } catch (err) {
+    console.warn('Sync all from cloud failed:', err);
+  }
+
+  return { success: false };
 }
 
 export async function processSyncQueue(): Promise<void> {
@@ -209,7 +328,11 @@ export function syncProjectDeletionToCloud(projectId: string): void {
   }).catch(() => {});
 }
 
-export async function performFullSync(): Promise<{ success: boolean; message: string }> {
+export async function performFullBiDirectionalSync(): Promise<{ success: boolean; message: string }> {
+  // 1. First pull down any remote data from database into IndexedDB
+  await syncAllFromCloud();
+
+  // 2. Then push any local projects/snapshots to the cloud
   const settings = await getSettings();
   if (!settings.apiUrl) {
     return { success: false, message: 'Sync service URL not configured' };
@@ -230,10 +353,14 @@ export async function performFullSync(): Promise<{ success: boolean; message: st
       if (note) syncNoteToCloud(note);
     }
     await processSyncQueue();
-    return { success: true, message: 'Sync completed successfully' };
+    return { success: true, message: 'Bi-directional sync complete.' };
   } catch (err: any) {
     return { success: false, message: err.message || 'Sync failed' };
   }
+}
+
+export async function performFullSync(): Promise<{ success: boolean; message: string }> {
+  return performFullBiDirectionalSync();
 }
 
 // Auto register network listeners for processing offline queue

@@ -15,7 +15,8 @@ export default defineConfig({
       'tabGroups',
       'storage',
       'scripting',
-      'activeTab'
+      'activeTab',
+      'identity'
     ],
     host_permissions: [
       '<all_urls>'

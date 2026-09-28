@@ -117,3 +117,59 @@ class ProjectService:
             await db.snapshots.delete_many({})
             await db.notes.delete_many({})
         return True
+
+    @staticmethod
+    async def get_all_user_data(user_id: str):
+        db = get_database()
+        if db is None or not user_id:
+            return {"projects": [], "snapshots": [], "notes": []}
+        
+        query = {"user_id": user_id}
+        projects_cursor = db.projects.find(query)
+        snapshots_cursor = db.snapshots.find(query)
+        notes_cursor = db.notes.find(query)
+
+        projects = []
+        async for doc in projects_cursor:
+            p_id = str(doc.get("id") or doc.get("_id") or "")
+            if p_id:
+                projects.append({
+                    "id": p_id,
+                    "name": doc.get("name", "Untitled Project"),
+                    "description": doc.get("description", ""),
+                    "color": doc.get("color", "purple"),
+                    "user_id": doc.get("user_id", user_id),
+                    "created_at": doc.get("created_at", datetime.utcnow().isoformat()),
+                    "updated_at": doc.get("updated_at", datetime.utcnow().isoformat()),
+                    "tabs_count": doc.get("tabs_count", 0),
+                    "groups_count": doc.get("groups_count", 0),
+                    "last_snapshot_time": doc.get("last_snapshot_time")
+                })
+
+        snapshots = []
+        async for doc in snapshots_cursor:
+            snapshots.append({
+                "id": str(doc.get("id") or doc.get("_id") or ""),
+                "project_id": doc.get("project_id"),
+                "user_id": doc.get("user_id", user_id),
+                "created_at": doc.get("created_at"),
+                "windows": doc.get("windows", []),
+                "tab_groups": doc.get("tab_groups", []),
+                "tabs_count": doc.get("tabs_count", 0),
+                "groups_count": doc.get("groups_count", 0)
+            })
+
+        notes = []
+        async for doc in notes_cursor:
+            notes.append({
+                "project_id": doc.get("project_id"),
+                "user_id": doc.get("user_id", user_id),
+                "content": doc.get("content", ""),
+                "updated_at": doc.get("updated_at")
+            })
+
+        return {
+            "projects": projects,
+            "snapshots": snapshots,
+            "notes": notes
+        }

@@ -63,6 +63,8 @@ export interface Settings {
   userId?: string;
   userName?: string;
   userEmail?: string;
+  userPicture?: string;
+  authToken?: string;
   isSetupComplete?: boolean;
 }
 

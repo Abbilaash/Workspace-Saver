@@ -26,6 +26,46 @@ export async function getCurrentWorkspaceSummary(): Promise<CurrentWorkspaceSumm
   }
 }
 
+async function captureTabStateWithTimeout(tab: chrome.tabs.Tab, timeoutMs = 150): Promise<{ scrollX: number; scrollY: number; selectedText?: string }> {
+  if (!tab.id || !tab.url || (!tab.url.startsWith('http://') && !tab.url.startsWith('https://') && !tab.url.startsWith('file://'))) {
+    return { scrollX: 0, scrollY: 0 };
+  }
+
+  return new Promise((resolve) => {
+    let resolved = false;
+    const timer = setTimeout(() => {
+      if (!resolved) {
+        resolved = true;
+        resolve({ scrollX: 0, scrollY: 0 });
+      }
+    }, timeoutMs);
+
+    chrome.tabs.sendMessage(tab.id!, { type: 'GET_PAGE_STATE' })
+      .then((response) => {
+        if (!resolved) {
+          resolved = true;
+          clearTimeout(timer);
+          if (response) {
+            resolve({
+              scrollX: response.scrollX || 0,
+              scrollY: response.scrollY || 0,
+              selectedText: response.selectedText ? response.selectedText.slice(0, 5000) : undefined
+            });
+          } else {
+            resolve({ scrollX: 0, scrollY: 0 });
+          }
+        }
+      })
+      .catch(() => {
+        if (!resolved) {
+          resolved = true;
+          clearTimeout(timer);
+          resolve({ scrollX: 0, scrollY: 0 });
+        }
+      });
+  });
+}
+
 export async function captureWorkspace(): Promise<{ windows: WorkspaceWindow[]; tabGroups: TabGroupSnapshot[]; tabsCount: number; groupsCount: number }> {
   if (typeof chrome === 'undefined' || !chrome.tabs) {
     throw new Error('Chrome Extension API not available');
@@ -49,48 +89,25 @@ export async function captureWorkspace(): Promise<{ windows: WorkspaceWindow[]; 
     }
   }
 
-  const capturedTabs: WorkspaceTab[] = [];
+  // Capture all tab page states concurrently in parallel with a 150ms timeout
+  const tabStatePromises = rawTabs.map(tab => captureTabStateWithTimeout(tab, 150));
+  const tabStates = await Promise.all(tabStatePromises);
 
-  for (const tab of rawTabs) {
-    if (!tab.id || !tab.url) continue;
-
-    let scrollX = 0;
-    let scrollY = 0;
-    let selectedText: string | undefined = undefined;
-
-    // Try capturing scroll position and selected text via content script
-    if (
-      tab.url.startsWith('http://') || 
-      tab.url.startsWith('https://') || 
-      tab.url.startsWith('file://')
-    ) {
-      try {
-        const response = await chrome.tabs.sendMessage(tab.id, { type: 'GET_PAGE_STATE' });
-        if (response) {
-          scrollX = response.scrollX || 0;
-          scrollY = response.scrollY || 0;
-          if (response.selectedText) {
-            selectedText = response.selectedText.slice(0, 5000);
-          }
-        }
-      } catch (err) {
-        // Content script might not be injected or ready on restricted/unloaded tabs
-      }
-    }
-
-    capturedTabs.push({
-      url: tab.url,
-      title: tab.title || tab.url,
+  const capturedTabs: WorkspaceTab[] = rawTabs.map((tab, idx) => {
+    const pageState = tabStates[idx] || { scrollX: 0, scrollY: 0 };
+    return {
+      url: tab.url || '',
+      title: tab.title || tab.url || 'Untitled Tab',
       index: tab.index,
       active: tab.active || false,
       pinned: tab.pinned || false,
       muted: tab.mutedInfo?.muted || false,
       groupId: tab.groupId !== -1 ? tab.groupId : undefined,
-      scrollX,
-      scrollY,
-      selectedText
-    });
-  }
+      scrollX: pageState.scrollX,
+      scrollY: pageState.scrollY,
+      selectedText: pageState.selectedText
+    };
+  }).filter(t => t.url);
 
   const windowSnapshot: WorkspaceWindow = {
     originalWindowId: currentWin.id,
@@ -223,7 +240,6 @@ export async function restoreWorkspace(windows: WorkspaceWindow[], tabGroups: Ta
 
 function isValidRestorableUrl(url: string): boolean {
   if (!url) return false;
-  // chrome:// and chrome-extension:// cannot be opened directly in some browsers or permission contexts
   if (url.startsWith('chrome://') || url.startsWith('chrome-extension://') || url.startsWith('edge://')) {
     return false;
   }

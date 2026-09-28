@@ -1,181 +1,259 @@
 import React, { useState } from 'react';
-import { Sparkles, ArrowRight, ShieldCheck, RefreshCw } from 'lucide-react';
+import { Sparkles, ArrowRight, Copy, Check, Key, User, Mail, ShieldCheck, DownloadCloud } from 'lucide-react';
 import { useWorkspaceStore } from '../stores/useWorkspaceStore';
-import { authenticateWithGoogle } from '../lib/sync';
+import { registerUserInCloud, connectExistingUserById } from '../lib/sync';
 
 export const OnboardingModal: React.FC = () => {
-  const { settings, setToast, triggerCloudSync } = useWorkspaceStore();
+  const { settings, setToast, triggerCloudSync, updateSettings } = useWorkspaceStore();
+  const [mode, setMode] = useState<'create' | 'connect'>('create');
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [existingSyncId, setExistingSyncId] = useState('');
+  const [generatedSyncId, setGeneratedSyncId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [manualEmail, setManualEmail] = useState('');
-  const [showManualInput, setShowManualInput] = useState(false);
+  const [copied, setCopied] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
   // If user setup is already complete, do not render modal
-  if (settings.isSetupComplete && settings.userName && settings.userEmail) {
+  if (settings.isSetupComplete && settings.userId) {
     return null;
   }
 
-  const handleGoogleSignIn = async () => {
+  const handleCreateAccount = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim() || !email.trim()) return;
+
     setIsSubmitting(true);
     setErrorMessage('');
 
     try {
-      let idToken: string | undefined;
-      let accessToken: string | undefined;
-
-      // Try Chrome Identity Web Auth Flow if in Chrome Extension context
-      if (typeof chrome !== 'undefined' && chrome.identity?.launchWebAuthFlow) {
-        const redirectUri = chrome.identity.getRedirectURL();
-        // Client ID can be passed or standard Google auth request
-        const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
-        authUrl.searchParams.set('client_id', '89123847291-workspace-saver.apps.googleusercontent.com'); // Placeholder or user client ID
-        authUrl.searchParams.set('response_type', 'token id_token');
-        authUrl.searchParams.set('redirect_uri', redirectUri);
-        authUrl.searchParams.set('scope', 'openid email profile');
-        authUrl.searchParams.set('nonce', Math.random().toString(36).substring(2));
-
-        try {
-          const responseUrl = await new Promise<string>((resolve, reject) => {
-            chrome.identity.launchWebAuthFlow(
-              { url: authUrl.toString(), interactive: true },
-              (redirectUrl) => {
-                if (chrome.runtime.lastError || !redirectUrl) {
-                  reject(chrome.runtime.lastError?.message || 'OAuth flow cancelled or failed');
-                } else {
-                  resolve(redirectUrl);
-                }
-              }
-            );
-          });
-
-          const urlParams = new URLSearchParams(new URL(responseUrl.replace('#', '?')).search);
-          idToken = urlParams.get('id_token') || undefined;
-          accessToken = urlParams.get('access_token') || undefined;
-        } catch (flowErr: any) {
-          console.warn('Chrome WebAuthFlow prompt warning:', flowErr);
-        }
-      }
-
-      // Send token or fallback payload to FastAPI backend
-      const authRes = await authenticateWithGoogle({
-        id_token: idToken,
-        access_token: accessToken,
-        email: manualEmail.trim() || undefined,
-        name: manualEmail ? manualEmail.split('@')[0] : undefined
-      });
-
-      if (authRes.success && authRes.user) {
-        setToast({ type: 'success', text: `Signed in as ${authRes.user.email}! Hydrating workspace...` });
-        // Automatically trigger cloud data hydration and sync
-        await triggerCloudSync();
+      const res = await registerUserInCloud(name.trim(), email.trim());
+      if (res.success && res.user?.id) {
+        setGeneratedSyncId(res.user.id);
+        setToast({ type: 'success', text: 'Account registered & Unique Sync ID created!' });
       } else {
-        if (!manualEmail) {
-          setShowManualInput(true);
-          setErrorMessage('Google popup closed. Enter your Google email to sign in directly.');
-        } else {
-          setErrorMessage(authRes.error || 'Google Sign-In failed');
-        }
+        setErrorMessage(res.error || 'Could not register user. Please try again.');
       }
     } catch (err: any) {
-      console.error('Google OAuth error:', err);
-      setErrorMessage(err.message || 'Authentication error');
+      setErrorMessage(err.message || 'Error creating account');
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const handleManualSubmit = async (e: React.FormEvent) => {
+  const handleConnectExisting = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!manualEmail.trim()) return;
-    handleGoogleSignIn();
+    if (!existingSyncId.trim()) return;
+
+    setIsSubmitting(true);
+    setErrorMessage('');
+
+    try {
+      const res = await connectExistingUserById(existingSyncId.trim());
+      if (res.success && res.user) {
+        setToast({ type: 'success', text: `Connected! Restored data for ${res.user.name || res.user.email}.` });
+        await triggerCloudSync();
+      } else {
+        setErrorMessage(res.error || 'Sync ID not found in database.');
+      }
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Failed to connect Sync ID');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleCopyId = () => {
+    if (!generatedSyncId) return;
+    navigator.clipboard.writeText(generatedSyncId);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleFinishSetup = async () => {
+    if (generatedSyncId) {
+      await updateSettings({
+        userId: generatedSyncId,
+        userName: name.trim(),
+        userEmail: email.trim(),
+        isSetupComplete: true
+      });
+      await triggerCloudSync();
+    }
   };
 
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
-      <div className="w-full max-w-xs bg-card border border-border rounded-2xl shadow-2xl overflow-hidden p-6 space-y-5">
-        <div className="text-center space-y-2">
-          <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-purple-600 to-indigo-500 flex items-center justify-center text-white mx-auto shadow-lg shadow-indigo-500/20">
-            <Sparkles className="w-6 h-6" />
-          </div>
-          <h2 className="text-lg font-bold tracking-tight text-foreground">
-            Sign in to Workspace Saver
-          </h2>
-          <p className="text-xs text-muted-foreground leading-relaxed">
-            Sync your tab snapshots across all your browser instances with Google OAuth.
-          </p>
-        </div>
+      <div className="w-full max-w-xs bg-card border border-border rounded-2xl shadow-2xl overflow-hidden p-5 space-y-4">
+        
+        {/* Step 2: Show Generated Sync ID Screen */}
+        {generatedSyncId ? (
+          <div className="space-y-4 text-center">
+            <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-emerald-500 to-teal-400 flex items-center justify-center text-white mx-auto shadow-lg shadow-emerald-500/20">
+              <Key className="w-6 h-6" />
+            </div>
+            
+            <div className="space-y-1">
+              <h2 className="text-base font-bold tracking-tight text-foreground">
+                Your Unique Sync ID
+              </h2>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Save this unique key to restore and sync your saved workspaces on any device or browser.
+              </p>
+            </div>
 
-        {errorMessage && (
-          <div className="p-2.5 rounded-lg bg-destructive/15 border border-destructive/30 text-destructive text-[11px] leading-tight text-center">
-            {errorMessage}
+            {/* Sync ID Display Box */}
+            <div className="p-3 bg-muted/80 border border-border rounded-xl space-y-2">
+              <span className="text-[10px] uppercase font-mono font-bold tracking-wider text-muted-foreground block">
+                Unique Sync ID
+              </span>
+              <div className="flex items-center justify-between gap-2 bg-background p-2 rounded-lg border border-border">
+                <code className="text-xs font-mono text-indigo-400 font-semibold truncate select-all">
+                  {generatedSyncId}
+                </code>
+                <button
+                  onClick={handleCopyId}
+                  className="p-1.5 rounded-md bg-muted hover:bg-accent text-foreground transition-colors shrink-0"
+                  title="Copy Sync ID"
+                >
+                  {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                </button>
+              </div>
+            </div>
+
+            <button
+              onClick={handleFinishSetup}
+              className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-semibold text-xs shadow-md hover:opacity-95 active:scale-[0.99] transition-all flex items-center justify-center gap-2"
+            >
+              <span>Start Using Extension</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        ) : (
+          /* Step 1: Initial Form (Create vs Connect) */
+          <div className="space-y-4">
+            <div className="text-center space-y-1.5">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-purple-600 to-indigo-500 flex items-center justify-center text-white mx-auto shadow-md">
+                <Sparkles className="w-5 h-5" />
+              </div>
+              <h2 className="text-base font-bold tracking-tight text-foreground">
+                Welcome to Workspace Saver
+              </h2>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Save tab workspaces locally & automatically sync across devices.
+              </p>
+            </div>
+
+            {/* Mode Switcher Tabs */}
+            <div className="flex rounded-lg bg-muted p-1 gap-1">
+              <button
+                type="button"
+                onClick={() => { setMode('create'); setErrorMessage(''); }}
+                className={`flex-1 py-1.5 text-[11px] font-medium rounded-md transition-all ${
+                  mode === 'create'
+                    ? 'bg-card text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                Create New
+              </button>
+              <button
+                type="button"
+                onClick={() => { setMode('connect'); setErrorMessage(''); }}
+                className={`flex-1 py-1.5 text-[11px] font-medium rounded-md transition-all ${
+                  mode === 'connect'
+                    ? 'bg-card text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                Use Existing ID
+              </button>
+            </div>
+
+            {errorMessage && (
+              <div className="p-2 rounded-lg bg-destructive/15 border border-destructive/30 text-destructive text-[11px] leading-tight text-center">
+                {errorMessage}
+              </div>
+            )}
+
+            {mode === 'create' ? (
+              <form onSubmit={handleCreateAccount} className="space-y-3">
+                <div>
+                  <label className="block text-[11px] font-medium text-foreground mb-1 flex items-center gap-1">
+                    <User className="w-3 h-3 text-muted-foreground" />
+                    Full Name
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="John Doe"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    required
+                    autoFocus
+                    className="w-full px-3 py-1.5 bg-muted border border-border rounded-lg text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-medium text-foreground mb-1 flex items-center gap-1">
+                    <Mail className="w-3 h-3 text-muted-foreground" />
+                    Email Address
+                  </label>
+                  <input
+                    type="email"
+                    placeholder="john@example.com"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                    className="w-full px-3 py-1.5 bg-muted border border-border rounded-lg text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isSubmitting || !name.trim() || !email.trim()}
+                  className="w-full mt-2 py-2.5 px-4 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-medium text-xs shadow-md hover:opacity-95 active:scale-[0.99] transition-all flex items-center justify-center gap-1.5 disabled:opacity-50"
+                >
+                  <span>{isSubmitting ? 'Generating Sync ID...' : 'Generate Sync ID & Start'}</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              </form>
+            ) : (
+              <form onSubmit={handleConnectExisting} className="space-y-3">
+                <div>
+                  <label className="block text-[11px] font-medium text-foreground mb-1 flex items-center gap-1">
+                    <Key className="w-3 h-3 text-muted-foreground" />
+                    Existing Sync ID
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Paste your unique Sync ID here..."
+                    value={existingSyncId}
+                    onChange={(e) => setExistingSyncId(e.target.value)}
+                    required
+                    autoFocus
+                    className="w-full px-3 py-1.5 bg-muted border border-border rounded-lg text-xs text-foreground font-mono placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isSubmitting || !existingSyncId.trim()}
+                  className="w-full mt-2 py-2.5 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-medium text-xs shadow-md hover:opacity-95 active:scale-[0.99] transition-all flex items-center justify-center gap-1.5 disabled:opacity-50"
+                >
+                  <DownloadCloud className="w-3.5 h-3.5" />
+                  <span>{isSubmitting ? 'Connecting & Syncing...' : 'Connect & Restore Data'}</span>
+                </button>
+              </form>
+            )}
+
+            <div className="pt-1 text-center flex items-center justify-center gap-1 text-[10px] text-muted-foreground">
+              <ShieldCheck className="w-3 h-3 text-emerald-500" />
+              <span>Automatic Mongo Cloud Sync Enabled</span>
+            </div>
           </div>
         )}
 
-        <div className="space-y-3 pt-1">
-          <button
-            onClick={handleGoogleSignIn}
-            disabled={isSubmitting}
-            className="w-full py-2.5 px-4 rounded-xl bg-white text-slate-800 font-semibold text-xs shadow-md hover:bg-slate-50 active:scale-[0.99] transition-all flex items-center justify-center gap-2.5 disabled:opacity-50 border border-slate-200"
-          >
-            {/* Google SVG Icon */}
-            <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
-              <path
-                fill="#4285F4"
-                d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-              />
-              <path
-                fill="#34A853"
-                d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-              />
-              <path
-                fill="#FBBC05"
-                d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
-              />
-              <path
-                fill="#EA4335"
-                d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
-              />
-            </svg>
-            <span>{isSubmitting ? 'Signing in & Syncing...' : 'Sign in with Google'}</span>
-          </button>
-
-          {showManualInput ? (
-            <form onSubmit={handleManualSubmit} className="space-y-2 pt-2 border-t border-border">
-              <label className="block text-[11px] font-medium text-muted-foreground">
-                Enter Google Account Email:
-              </label>
-              <div className="flex gap-1.5">
-                <input
-                  type="email"
-                  placeholder="user@gmail.com"
-                  value={manualEmail}
-                  onChange={(e) => setManualEmail(e.target.value)}
-                  required
-                  className="flex-1 px-3 py-1.5 bg-muted border border-border rounded-lg text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-                />
-                <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="px-3 py-1.5 rounded-lg bg-primary text-primary-foreground font-medium text-xs hover:opacity-90"
-                >
-                  Sync
-                </button>
-              </div>
-            </form>
-          ) : (
-            <button
-              onClick={() => setShowManualInput(true)}
-              className="w-full text-center text-[11px] text-muted-foreground hover:text-foreground transition-colors pt-1"
-            >
-              Sign in using Google Email directly
-            </button>
-          )}
-        </div>
-
-        <div className="pt-2 text-center flex items-center justify-center gap-1.5 text-[10px] text-muted-foreground">
-          <ShieldCheck className="w-3 h-3 text-emerald-500" />
-          <span>Secured with 180-day Google OAuth JWT Session</span>
-        </div>
       </div>
     </div>
   );

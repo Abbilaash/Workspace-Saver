@@ -33,84 +33,94 @@ export async function checkBackendHealth(apiUrl: string): Promise<boolean> {
   return false;
 }
 
-export async function authenticateWithGoogle(payload: {
-  id_token?: string;
-  access_token?: string;
-  email?: string;
-  name?: string;
-  picture?: string;
-  google_id?: string;
-}): Promise<{ success: boolean; user?: any; token?: string; error?: string }> {
+export async function registerUserInCloud(name: string, email: string): Promise<{ success: boolean; user?: any; error?: string }> {
   const settings = await getSettings();
   const apiUrl = settings.apiUrl || 'https://workspace-saver-1.onrender.com';
 
   try {
-    const res = await fetch(`${apiUrl}/auth/google`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-
-    if (res.ok) {
-      const json = await res.json();
-      if (json.success && json.data) {
-        const { token, user } = json.data;
-        settings.userId = user.id;
-        settings.userName = user.name;
-        settings.userEmail = user.email;
-        settings.userPicture = user.picture;
-        settings.authToken = token;
-        settings.isSetupComplete = true;
-        await saveSettings(settings);
-        return { success: true, user, token };
-      }
-    } else {
-      const json = await res.json().catch(() => ({}));
-      return { success: false, error: json.detail?.error?.message || json.detail || 'Authentication failed' };
-    }
-  } catch (err: any) {
-    console.error('Google Auth backend error:', err);
-    return { success: false, error: err.message || 'Network error connecting to backend' };
-  }
-
-  return { success: false, error: 'Authentication failed' };
-}
-
-export async function syncUserToCloud(name: string, email: string): Promise<{ success: boolean; userId: string }> {
-  const settings = await getSettings();
-  const userId = settings.userId || crypto.randomUUID();
-
-  try {
-    const res = await fetch(`${settings.apiUrl}/users`, {
+    const res = await fetch(`${apiUrl}/users`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        id: userId,
         name: name.trim(),
-        email: email.trim()
+        email: email.trim().toLowerCase()
       })
     });
 
     if (res.ok) {
       const json = await res.json();
-      const returnedUserId = json.data?.id || userId;
-      settings.userId = returnedUserId;
-      settings.userName = name.trim();
-      settings.userEmail = email.trim();
-      settings.isSetupComplete = true;
-      await saveSettings(settings);
-      return { success: true, userId: returnedUserId };
+      if (json.success && json.data) {
+        const user = json.data;
+        settings.userId = user.id;
+        settings.userName = user.name;
+        settings.userEmail = user.email;
+        settings.isSetupComplete = true;
+        await saveSettings(settings);
+        return { success: true, user };
+      }
+    } else {
+      const json = await res.json().catch(() => ({}));
+      return { success: false, error: json.detail?.error?.message || json.detail || 'Failed to create user' };
     }
-  } catch (err) {
-    console.warn('Could not sync user to backend:', err);
+  } catch (err: any) {
+    console.error('Registration backend error:', err);
+    // Fallback offline UUID generation
+    const fallbackId = settings.userId || crypto.randomUUID();
+    settings.userId = fallbackId;
+    settings.userName = name.trim();
+    settings.userEmail = email.trim();
+    settings.isSetupComplete = true;
+    await saveSettings(settings);
+    return { success: true, user: { id: fallbackId, name, email } };
   }
 
-  settings.userId = userId;
-  settings.userName = name.trim();
-  settings.userEmail = email.trim();
-  settings.isSetupComplete = true;
-  await saveSettings(settings);
-  return { success: true, userId };
+  return { success: false, error: 'Registration failed' };
+}
+
+export async function connectExistingUserById(syncId: string): Promise<{ success: boolean; user?: any; error?: string }> {
+  const settings = await getSettings();
+  const apiUrl = settings.apiUrl || 'https://workspace-saver-1.onrender.com';
+  const cleanId = syncId.trim();
+
+  if (!cleanId) {
+    return { success: false, error: 'Please enter a valid Unique Sync ID' };
+  }
+
+  try {
+    const res = await fetch(`${apiUrl}/users/${encodeURIComponent(cleanId)}`, {
+      method: 'GET',
+      headers: { 'Accept': 'application/json' }
+    });
+
+    if (res.ok) {
+      const json = await res.json();
+      if (json.success && json.data) {
+        const user = json.data;
+        settings.userId = user.id;
+        settings.userName = user.name;
+        settings.userEmail = user.email;
+        settings.isSetupComplete = true;
+        await saveSettings(settings);
+
+        // Instantly sync down all workspace data from database
+        await syncAllFromCloud();
+
+        return { success: true, user };
+      }
+    } else {
+      return { success: false, error: 'Sync ID not found in database. Double-check your ID.' };
+    }
+  } catch (err: any) {
+    console.error('Connect sync ID error:', err);
+    return { success: false, error: 'Could not connect to backend to verify Sync ID.' };
+  }
+
+  return { success: false, error: 'Invalid Sync ID' };
+}
+
+export async function syncUserToCloud(name: string, email: string): Promise<{ success: boolean; userId: string }> {
+  const result = await registerUserInCloud(name, email);
+  return { success: result.success, userId: result.user?.id || '' };
 }
 
 export async function syncAllFromCloud(): Promise<{ success: boolean; projectsCount?: number }> {
@@ -120,14 +130,9 @@ export async function syncAllFromCloud(): Promise<{ success: boolean; projectsCo
   }
 
   try {
-    const headers: Record<string, string> = { 'Accept': 'application/json' };
-    if (settings.authToken) {
-      headers['Authorization'] = `Bearer ${settings.authToken}`;
-    }
-
     const res = await fetch(`${settings.apiUrl}/projects/sync-all?user_id=${encodeURIComponent(settings.userId)}`, {
       method: 'GET',
-      headers
+      headers: { 'Accept': 'application/json' }
     });
 
     if (res.ok) {

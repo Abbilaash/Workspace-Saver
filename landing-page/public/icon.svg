@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32" fill="none">
+  <rect width="32" height="32" rx="8" fill="#090a0f"/>
+  <rect x="0.5" y="0.5" width="31" height="31" rx="7.5" stroke="#6366f1" stroke-opacity="0.4"/>
+  
+  <!-- Outer Layer -->
+  <path d="M7 10C7 8.89543 7.89543 8 9 8H23C24.1046 8 25 8.89543 25 10V18C25 19.1046 24.1046 20 23 20H9C7.89543 20 7 19.1046 7 18V10Z" fill="#1e1b4b" stroke="#6366f1" stroke-width="1.5"/>
+  
+  <!-- Front Stack Layer -->
+  <path d="M10 13C10 11.8954 10.8954 11 12 11H20C21.1046 11 22 11.8954 22 13V22C22 23.1046 21.1046 24 20 24H12C10.8954 24 10 23.1046 10 22V13Z" fill="#6366f1" stroke="#818cf8" stroke-width="1.5"/>
+  
+  <!-- Bookmark Accent -->
+  <path d="M14 11V18L16 16.5L18 18V11H14Z" fill="#ffffff"/>
+</svg>

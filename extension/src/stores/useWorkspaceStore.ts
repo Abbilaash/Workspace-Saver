@@ -80,7 +80,11 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
 
   loadInitialData: async () => {
     try {
-      const currentSettings = await getSettings();
+      const [projectsList, currentSummary, currentSettings] = await Promise.all([
+        getAllProjects(),
+        getCurrentWorkspaceSummary(),
+        getSettings()
+      ]);
 
       // Apply theme class
       if (currentSettings.theme === 'dark') {
@@ -89,18 +93,6 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         document.documentElement.classList.remove('dark');
       }
 
-      // If setup is complete, run 2-step sync: push local unsynced workspaces -> load database workspaces
-      if (currentSettings.isSetupComplete && currentSettings.userId) {
-        set({ isSyncing: true, settings: currentSettings });
-        await performFullBiDirectionalSync();
-      }
-
-      // 2. Read hydrated database projects and current workspace summary
-      const [projectsList, currentSummary] = await Promise.all([
-        getAllProjects(),
-        getCurrentWorkspaceSummary()
-      ]);
-
       set({
         projects: projectsList,
         currentWorkspace: currentSummary,
@@ -108,8 +100,16 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         isSyncing: false
       });
 
-      // Background process any offline sync queue items
-      processSyncQueue().catch(() => { });
+      // Background auto-sync if projects empty or setup complete
+      if (currentSettings.isSetupComplete && currentSettings.userId) {
+        // If local storage has 0 projects, trigger instant background hydration from database
+        if (projectsList.length === 0) {
+          get().triggerCloudSync();
+        } else {
+          // Process any pending offline sync queue items asynchronously
+          processSyncQueue().catch(() => { });
+        }
+      }
     } catch (err) {
       console.error('Failed to load initial workspace store data:', err);
       set({ isSyncing: false });

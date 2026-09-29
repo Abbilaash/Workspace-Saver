@@ -124,29 +124,22 @@ class ProjectService:
         if db is None or not user_id:
             return {"projects": [], "snapshots": [], "notes": []}
         
-        # Include requested user_id AND default_user / unassigned legacy projects
+        # Include requested user_id AND legacy unassigned projects
         query = {
-            "user_id": user_id
+            "$or": [
+                {"user_id": user_id},
+                {"user_id": "default_user"},
+                {"user_id": ""},
+                {"user_id": {"$exists": False}}
+            ]
         }
 
-        # Auto-claim any unassigned/default_user projects to this user_id in MongoDB
-        await db.projects.update_many({"$or": [{"user_id": "default_user"}, {"user_id": ""}, {"user_id": {"$exists": False}}]}, {"$set": {"user_id": user_id}})
-        await db.snapshots.update_many({"$or": [{"user_id": "default_user"}, {"user_id": ""}, {"user_id": {"$exists": False}}]}, {"$set": {"user_id": user_id}})
-        await db.notes.update_many({"$or": [{"user_id": "default_user"}, {"user_id": ""}, {"user_id": {"$exists": False}}]}, {"$set": {"user_id": user_id}})
-
-        # Diagnostic logging for MongoDB database state
-        total_in_db = await db.projects.count_documents({})
-        matching_user = await db.projects.count_documents({"user_id": user_id})
-        existing_user_ids = await db.projects.distinct("user_id")
-        print(f"[DB DIAGNOSTIC] Total projects in MongoDB: {total_in_db} | Matching user_id '{user_id}': {matching_user} | Existing user_ids in DB: {existing_user_ids}")
-
-        projects_cursor = db.projects.find({"$or": [{"user_id": user_id}, {"user_id": "default_user"}, {"user_id": ""}, {"user_id": {"$exists": False}}]})
-        snapshots_cursor = db.snapshots.find({"$or": [{"user_id": user_id}, {"user_id": "default_user"}, {"user_id": ""}, {"user_id": {"$exists": False}}]})
-        notes_cursor = db.notes.find({"$or": [{"user_id": user_id}, {"user_id": "default_user"}, {"user_id": ""}, {"user_id": {"$exists": False}}]})
+        projects_cursor = db.projects.find(query)
+        snapshots_cursor = db.snapshots.find(query)
+        notes_cursor = db.notes.find(query)
 
         projects = []
         async for doc in projects_cursor:
-            print("[DB DOC FOUND]:", doc)
             p_id = str(doc.get("id") or doc.get("_id") or "")
             if p_id:
                 projects.append({

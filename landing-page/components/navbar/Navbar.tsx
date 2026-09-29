@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { Button } from '../ui/Button';
-import { Layers, Bookmark, ArrowRight, Github } from 'lucide-react';
+import { Layers, ArrowRight, Github } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 export function Navbar() {
@@ -31,21 +32,21 @@ export function Navbar() {
         }`}
       >
         {/* Brand Logo */}
-        <a href="#" className="flex items-center gap-2.5 group">
+        <Link href="/" className="flex items-center gap-2.5 group">
           <div className="w-8 h-8 rounded-lg bg-indigo-600/20 border border-indigo-500/40 flex items-center justify-center text-indigo-400 group-hover:bg-indigo-600 group-hover:text-white transition-all duration-300 shadow-sm shadow-indigo-500/20">
             <Layers className="w-4 h-4 transition-transform group-hover:scale-110" />
           </div>
           <span className="font-bold tracking-tight text-slate-100 text-sm md:text-base group-hover:text-indigo-300 transition-colors">
             Workspace Saver
           </span>
-        </a>
+        </Link>
 
         {/* Navigation Links */}
         <div className="hidden md:flex items-center gap-6 text-xs font-medium text-slate-400">
-          <a href="#features" className="hover:text-slate-100 transition-colors">Features</a>
-          <a href="#how-it-works" className="hover:text-slate-100 transition-colors">How it works</a>
-          <a href="#anatomy" className="hover:text-slate-100 transition-colors">Anatomy</a>
-          <a href="#use-cases" className="hover:text-slate-100 transition-colors">Use Cases</a>
+          <a href="/#features" className="hover:text-slate-100 transition-colors">Features</a>
+          <a href="/#how-it-works" className="hover:text-slate-100 transition-colors">How it works</a>
+          <a href="/#anatomy" className="hover:text-slate-100 transition-colors">Anatomy</a>
+          <a href="/#use-cases" className="hover:text-slate-100 transition-colors">Use Cases</a>
         </div>
 
         {/* Action Buttons */}

@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import Link from 'next/link';
 import { Layers, Github } from 'lucide-react';
 
 export function Footer() {
@@ -21,13 +22,13 @@ export function Footer() {
 
         {/* Links */}
         <div className="flex flex-wrap items-center gap-6 text-slate-400 font-medium">
-          <a href="#features" className="hover:text-slate-100 transition-colors">Features</a>
-          <a href="#how-it-works" className="hover:text-slate-100 transition-colors">How it works</a>
+          <a href="/#features" className="hover:text-slate-100 transition-colors">Features</a>
+          <a href="/#how-it-works" className="hover:text-slate-100 transition-colors">How it works</a>
           <a href="https://github.com/Abbilaash/Workspace-Saver" target="_blank" rel="noopener noreferrer" className="hover:text-slate-100 transition-colors flex items-center gap-1.5">
             <Github className="w-3.5 h-3.5" />
             <span>GitHub</span>
           </a>
-          <a href="#" className="hover:text-slate-100 transition-colors">Privacy</a>
+          <Link href="/privacy" className="hover:text-slate-100 transition-colors">Privacy</Link>
         </div>
 
         {/* Copyright */}
